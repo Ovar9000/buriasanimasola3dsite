@@ -1,11 +1,12 @@
 import { useGLTF } from '@react-three/drei'
 import type { ThreeEvent } from '@react-three/fiber'
 import { useLayoutEffect, useMemo, useRef } from 'react'
-import { Box3, Group, Mesh, Vector3, type Object3D } from 'three'
+import { useExplorerStore } from '../store/useExplorerStore'
+import { Box3, Group, Matrix4, Mesh, Vector3, type Object3D } from 'three'
 import { ASSETS } from '../config/assets'
 import { ISLAND } from '../config/scene'
 import { AssetBoundary } from './AssetBoundary'
-import { getProceduralIsland } from './proceduralIsland'
+import { getIslandDressing, getProceduralIsland, setIslandOutline } from './proceduralIsland'
 
 interface IslandProps {
   /** Called with the island root once it is in the scene (used for hotspot surface snapping). */
@@ -55,42 +56,110 @@ function IslandModel({ onReady }: IslandProps) {
         m.receiveShadow = true
       }
     })
-    return { scale: s, position: new Vector3(-centre.x * s, -waterline * s, -centre.z * s) }
+    const position = new Vector3(-centre.x * s, -waterline * s, -centre.z * s)
+    // Shape the beach / reef / sign around this model rather than the procedural mesa.
+    setIslandOutline(ISLAND.dressing ? measureWaterline(scene, new Matrix4().makeTranslation(position).scale(new Vector3(s, s, s))) : null)
+    return { scale: s, position }
   }, [scene])
 
+  const bumpOutline = useExplorerStore((st) => st.bumpOutline)
   useLayoutEffect(() => {
+    bumpOutline()
     if (root.current) onReady(root.current)
-  }, [onReady, fit])
+  }, [onReady, fit, bumpOutline])
 
   return (
-    <group ref={root} position={fit.position} scale={fit.scale} onPointerDown={logPoint}>
-      <primitive object={scene} />
+    <group ref={root} onPointerDown={logPoint}>
+      <group position={fit.position} scale={fit.scale}>
+        <primitive object={scene} />
+      </group>
+      {ISLAND.dressing && <IslandDressing />}
     </group>
   )
 }
 
-function ProceduralIsland({ onReady }: IslandProps) {
-  const geo = useMemo(() => getProceduralIsland(), [])
-  const root = useRef<Group>(null)
-
-  useLayoutEffect(() => {
-    if (root.current) onReady(root.current)
-  }, [onReady])
-
+/** Beach, slab tail and sign beach in world units (shared with the procedural island). */
+function IslandDressing() {
+  const geo = useMemo(() => getIslandDressing(), [])
   return (
-    <group ref={root} onPointerDown={logPoint}>
+    <>
       <mesh geometry={geo.terrain} receiveShadow>
         <meshStandardMaterial vertexColors roughness={0.96} metalness={0} envMapIntensity={0.6} />
       </mesh>
-      <mesh geometry={geo.mesa} castShadow receiveShadow>
-        <meshStandardMaterial vertexColors roughness={0.92} metalness={0} envMapIntensity={0.8} />
-      </mesh>
-      <mesh geometry={geo.rocks} castShadow receiveShadow>
+      <mesh geometry={geo.slabs} castShadow receiveShadow>
         <meshStandardMaterial vertexColors roughness={0.85} metalness={0} envMapIntensity={0.8} />
       </mesh>
       <mesh geometry={geo.props} castShadow receiveShadow userData={{ noSnap: true }}>
         <meshStandardMaterial vertexColors roughness={0.6} metalness={0} />
       </mesh>
+    </>
+  )
+}
+
+/**
+ * Waterline outline of a model in world space: the furthest vertex within a
+ * metre of sea level, per angular bin, gap-filled and smoothed.
+ */
+function measureWaterline(scene: Object3D, fit: Matrix4, bins = 180) {
+  const radius = new Float32Array(bins)
+  const v = new Vector3()
+  const m = new Matrix4()
+  scene.traverse((o) => {
+    const mesh = o as Mesh
+    if (!mesh.isMesh) return
+    m.multiplyMatrices(fit, mesh.matrixWorld)
+    const pos = mesh.geometry.attributes.position
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(m)
+      if (v.y > 1) continue
+      const b = Math.floor(((Math.atan2(v.z, v.x) + Math.PI) / (Math.PI * 2)) * bins) % bins
+      radius[b] = Math.max(radius[b], Math.hypot(v.x, v.z))
+    }
+  })
+  // fill empty bins from their nearest filled neighbours
+  const filled = radius.slice()
+  for (let b = 0; b < bins; b++) {
+    if (filled[b] > 0) continue
+    for (let d = 1; d < bins / 2; d++) {
+      const r = Math.max(radius[(b + d) % bins], radius[(b - d + bins) % bins])
+      if (r > 0) {
+        filled[b] = r
+        break
+      }
+    }
+  }
+  // circular smoothing so the shore doesn't zig-zag
+  const out = new Float32Array(bins)
+  for (let b = 0; b < bins; b++) {
+    let sum = 0
+    for (let d = -2; d <= 2; d++) sum += filled[(b + d + bins) % bins]
+    out[b] = sum / 5
+  }
+  return out
+}
+
+function ProceduralIsland({ onReady }: IslandProps) {
+  const geo = useMemo(() => {
+    setIslandOutline(null)
+    return getProceduralIsland()
+  }, [])
+  const root = useRef<Group>(null)
+
+  const bumpOutline = useExplorerStore((st) => st.bumpOutline)
+  useLayoutEffect(() => {
+    bumpOutline()
+    if (root.current) onReady(root.current)
+  }, [onReady, bumpOutline])
+
+  return (
+    <group ref={root} onPointerDown={logPoint}>
+      <mesh geometry={geo.mesa} castShadow receiveShadow>
+        <meshStandardMaterial vertexColors roughness={0.92} metalness={0} envMapIntensity={0.8} />
+      </mesh>
+      <mesh geometry={geo.rubble} castShadow receiveShadow>
+        <meshStandardMaterial vertexColors roughness={0.85} metalness={0} envMapIntensity={0.8} />
+      </mesh>
+      <IslandDressing />
     </group>
   )
 }

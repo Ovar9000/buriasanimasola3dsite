@@ -38,7 +38,17 @@ public/
 
 ### Fitting your GLB
 
-The model is auto-centred and scaled to `ISLAND.targetSize` in `src/config/scene.ts`. Tune `rotationY` so the **east front (sign beach) faces +X**, and `submergedFraction` to set the water line. Hotspot markers are ray-cast onto whatever island is loaded, so they follow your mesh's surface. In dev, **Alt/Option-click** the island to log a world position you can paste into `src/data/hotspots.ts`.
+The model is auto-centred and scaled to `ISLAND.targetSize` in `src/config/scene.ts`; `rotationY` turns it so it runs north–south with the sign beach facing +X, and `submergedFraction` sets the water line. Hotspot markers are ray-cast onto the loaded surface. In dev, **Alt/Option-click** the island to log a world position for `src/data/hotspots.ts`.
+
+With `ISLAND.dressing: true` (default) the app measures the model's waterline outline at load and wraps it with features the scan lacks — the pale beach (widest on the east front), the reef flat, the southern slab tail, and the ANIMASOLA letters / kiosk / canopy. Set it to `false` to show the model alone.
+
+**Keep the GLB web-sized.** The current model was optimised from the 72 MB Meshy export (2.2 M triangles) to 4.3 MB (549 k triangles, meshopt geometry, WebP textures) with:
+
+```bash
+npx @gltf-transform/cli optimize original.glb public/models/animasola-island.glb \
+  --compress meshopt --texture-compress webp --texture-size 2048 \
+  --simplify-ratio 0.25 --simplify-error 0.001
+```
 
 ## How it's organised
 

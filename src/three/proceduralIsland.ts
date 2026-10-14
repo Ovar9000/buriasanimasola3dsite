@@ -48,9 +48,41 @@ export function mesaRadius(phi: number) {
   return r * (1 + lobes)
 }
 
-/** Normalised distance from the mesa centre: 1 = cliff foot. */
-export function mesaRho(x: number, z: number) {
-  return Math.hypot(x, z) / mesaRadius(Math.atan2(z, x))
+// ---------------------------------------------------------------------------
+// Island outline: where the cliff meets the sea. Defaults to the procedural
+// mesa; replaced by the real model's measured waterline when a GLB loads, so
+// the beach, reef and sign wrap whichever island is shown.
+// ---------------------------------------------------------------------------
+
+let outline: Float32Array | null = null
+
+/** Use a measured waterline (radius per equal angle step from -π) or `null` for the procedural mesa. */
+export function setIslandOutline(samples: Float32Array | null) {
+  outline = samples
+  dressing = null
+  full = null
+}
+
+/** Waterline radius of the current island at angle φ (= atan2(z, x)). */
+export function outlineRadius(phi: number) {
+  if (!outline) return mesaRadius(phi)
+  const n = outline.length
+  const f = (((phi + Math.PI) / (Math.PI * 2)) * n + n) % n
+  const i = Math.floor(f)
+  const t = f - i
+  return outline[i] * (1 - t) + outline[(i + 1) % n] * t
+}
+
+/** Horizontal distance outside the current island's waterline (negative = inside). */
+export function shoreDistance(x: number, z: number) {
+  return Math.hypot(x, z) - outlineRadius(Math.atan2(z, x))
+}
+
+/** A point `offset` units out from the east shore at a given Z (marches outward from the centre line). */
+function eastShorePoint(z: number, offset: number): [number, number] {
+  let x = 0
+  while (x < 60 && shoreDistance(x, z) < 0) x += 0.1
+  return [x + offset, z]
 }
 
 /** The slab tail: a polyline running south-south-west from the southern tip. */
@@ -93,13 +125,13 @@ export function tailDistance(x: number, z: number) {
 /** Terrain height (sea level = 0). Exported for prop placement. */
 export function terrainHeight(x: number, z: number) {
   const phi = Math.atan2(z, x)
-  const rho = mesaRho(x, z)
-  // beach is widest on the east front, narrow on the west
+  const dist = shoreDistance(x, z)
+  // beach is widest on the east front, narrow elsewhere
   const east = Math.max(0, Math.cos(phi))
-  const edge = 1.16 + 0.2 * east * east + fbm2(x * 0.15, z * 0.15, 2) * 0.05
-  let h = 0.55 - 1.6 * smoothstep(edge - 0.05, edge + 0.12, rho)
+  const width = 1.1 + 2.9 * east * east + fbm2(x * 0.15, z * 0.15, 2) * 0.6
+  let h = 0.55 - 1.6 * smoothstep(width - 0.5, width + 1.4, dist)
   // reef flat, then the drop-off
-  h -= 2.5 * smoothstep(edge + 0.1, 2.6, rho)
+  h -= 2.5 * smoothstep(width + 1.5, 24, dist)
   // sand spit leading into the slab tail
   const tail = tailDistance(x, z)
   const spit = (1 - smoothstep(1.2, 3.4, tail.d)) * (1 - smoothstep(0.12, 0.38, tail.along))
@@ -108,7 +140,7 @@ export function terrainHeight(x: number, z: number) {
   return h
 }
 
-const SAND = new Color('#d6ccb6')
+const SAND = new Color('#cbbfa5')
 const PEBBLE = new Color('#b9ab92')
 const SAND_WET = new Color('#9f8f74')
 const SEABED = new Color('#8fb3a6')
@@ -252,7 +284,7 @@ function buildMesa() {
 // Flat rock slabs (the tail) + rubble at the cliff foot
 // ---------------------------------------------------------------------------
 
-const SLAB_COLORS = ['#7b5f47', '#8a6c52', '#6d5644', '#94785b'].map((h) => new Color(h))
+const SLAB_COLORS = ['#6e5440', '#7b604a', '#625040', '#856a52'].map((h) => new Color(h))
 const RUBBLE = new Color('#6f5a47')
 
 function slab(x: number, z: number, length: number, width: number, height: number, yaw: number, rand: () => number) {
@@ -313,7 +345,16 @@ function boulder(x: number, z: number, r: number, rand: () => number) {
   return g
 }
 
-function buildRocks() {
+function mergeParts(parts: BufferGeometry[]) {
+  const flat = parts.map((g) => (g.index ? g.toNonIndexed() : g))
+  const merged = mergeGeometries(flat, false)
+  new Set([...parts, ...flat]).forEach((g) => g.dispose())
+  if (!merged) throw new Error('Failed to merge rock geometry')
+  return merged
+}
+
+/** Flat slabs: the southern tail, the cracked tile field and reef scatter. */
+function buildSlabs() {
   const rand = mulberry32(SEED + 7)
   const parts: BufferGeometry[] = []
 
@@ -336,12 +377,12 @@ function buildRocks() {
     parts.push(slab(x, z, size * (1.2 + rand() * 0.6), size * (0.7 + rand() * 0.4), 0.55 + rand() * 0.7, yaw, rand))
   }
 
-  // Cracked tile field off the south-east beach.
+  // Cracked tile field just off the south-east beach.
   for (let gx = 0; gx < 5; gx++) {
     for (let gz = 0; gz < 4; gz++) {
       if (rand() < 0.2) continue
-      const x = 4.5 + gx * 1.25 + (rand() - 0.5) * 0.3
-      const z = 13 + gz * 1.1 + (rand() - 0.5) * 0.3
+      const z = 11.5 + gz * 1.1 + (rand() - 0.5) * 0.3
+      const x = eastShorePoint(z, 0.4)[0] + gx * 1.25 + (rand() - 0.5) * 0.3
       parts.push(slab(x, z, 1.05 + rand() * 0.3, 0.9 + rand() * 0.3, 0.5 + rand() * 0.3, 0.35 + (rand() - 0.5) * 0.2, rand))
     }
   }
@@ -354,26 +395,25 @@ function buildRocks() {
     parts.push(slab(x + (rand() - 0.5) * 2, z + (rand() - 0.5) * 2, 1.5 + rand() * 2, 1 + rand() * 1.2, 0.5 + rand() * 0.5, rand() * Math.PI, rand))
   }
 
-  // Rubble and fallen blocks at the cliff foot, heaviest on the west face.
+  return mergeParts(parts)
+}
+
+/** Rubble and fallen blocks at the cliff foot, heaviest on the west face. */
+function buildRubble() {
+  const rand = mulberry32(SEED + 11)
+  const parts: BufferGeometry[] = []
   for (let i = 0; i < 70; i++) {
     const phi = rand() * Math.PI * 2
     if (Math.cos(phi) > 0.3 && rand() < 0.6) continue
     const r = mesaRadius(phi) * (1.02 + rand() * 0.12)
     parts.push(boulder(Math.cos(phi) * r, Math.sin(phi) * r, 0.35 + rand() * 0.9, rand))
   }
-
-  const flat = parts.map((g) => (g.index ? g.toNonIndexed() : g))
-  const merged = mergeGeometries(flat, false)
-  new Set([...parts, ...flat]).forEach((g) => g.dispose())
-  if (!merged) throw new Error('Failed to merge rock geometry')
-  return merged
+  return mergeParts(parts)
 }
 
 // ---------------------------------------------------------------------------
 // East-front props: the ANIMASOLA letters, a kiosk and a red canopy
 // ---------------------------------------------------------------------------
-
-export const SIGN_POSITION = { x: 11.4, z: 0.5 }
 
 function coloured(g: BufferGeometry, hex: string) {
   g.deleteAttribute('uv')
@@ -388,7 +428,7 @@ function coloured(g: BufferGeometry, hex: string) {
 function buildProps() {
   const parts: BufferGeometry[] = []
   // Nine white block letters facing east (+X).
-  const { x: sx, z: sz } = SIGN_POSITION
+  const [sx, sz] = eastShorePoint(0.5, 2.4)
   const y0 = terrainHeight(sx, sz)
   const widths = [0.5, 0.5, 0.2, 0.62, 0.5, 0.42, 0.5, 0.36, 0.5] // A N I M A S O L A
   const total = widths.reduce((a, w) => a + w + 0.1, -0.1)
@@ -398,10 +438,10 @@ function buildProps() {
     cursor += w + 0.1
   }
   // Small white kiosk.
-  const [kx, kz] = [11.6, 4]
+  const [kx, kz] = eastShorePoint(4, 2.2)
   parts.push(coloured(new BoxGeometry(0.8, 1.4, 0.8).translate(kx, terrainHeight(kx, kz) + 0.7, kz), '#e9e6df'))
   // Red canopy on four poles.
-  const [tx, tz] = [11.2, 7]
+  const [tx, tz] = eastShorePoint(7, 2.4)
   const ty = terrainHeight(tx, tz)
   for (const [dx, dz] of [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]]) {
     parts.push(coloured(new CylinderGeometry(0.04, 0.04, 1.5, 5).translate(tx + dx, ty + 0.75, tz + dz), '#d7d3cc'))
@@ -413,16 +453,27 @@ function buildProps() {
   return merged
 }
 
-export interface ProceduralIslandGeometry {
+/** Beach, slab tail and east-front props — usable around a real GLB as well. */
+export interface IslandDressingGeometry {
   terrain: BufferGeometry
-  mesa: BufferGeometry
-  rocks: BufferGeometry
+  slabs: BufferGeometry
   props: BufferGeometry
 }
 
-let cache: ProceduralIslandGeometry | null = null
+export interface ProceduralIslandGeometry extends IslandDressingGeometry {
+  mesa: BufferGeometry
+  rubble: BufferGeometry
+}
+
+let dressing: IslandDressingGeometry | null = null
+let full: ProceduralIslandGeometry | null = null
+
+export function getIslandDressing(): IslandDressingGeometry {
+  if (!dressing) dressing = { terrain: buildTerrain(), slabs: buildSlabs(), props: buildProps() }
+  return dressing
+}
 
 export function getProceduralIsland(): ProceduralIslandGeometry {
-  if (!cache) cache = { terrain: buildTerrain(), mesa: buildMesa(), rocks: buildRocks(), props: buildProps() }
-  return cache
+  if (!full) full = { ...getIslandDressing(), mesa: buildMesa(), rubble: buildRubble() }
+  return full
 }

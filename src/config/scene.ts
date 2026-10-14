@@ -7,14 +7,22 @@ import type { Vec3 } from '../lib/types'
  */
 export const ISLAND = {
   /** Largest horizontal extent the GLB is scaled to (world units). */
-  targetSize: 40,
-  /** Extra rotation applied to the GLB (radians) so its east front (the sign beach) faces +X. */
-  rotationY: 0,
+  targetSize: 32,
+  /**
+   * Extra rotation applied to the GLB (radians) so it runs north–south with its
+   * terraced end toward the southern slab tail and the sign beach facing +X.
+   */
+  rotationY: Math.PI / 2,
   /**
    * Where the GLB's water line sits, as a fraction of its height from the bottom
    * (0 = model base sits on the sea, 0.08 = bottom 8% is submerged).
    */
   submergedFraction: 0.04,
+  /**
+   * Surround the GLB with the procedural beach, slab tail and east-front sign
+   * (features the model doesn't include). Set false to show the model alone.
+   */
+  dressing: true,
 } as const
 
 export const OCEAN = {
@@ -25,8 +33,8 @@ export const OCEAN = {
 
 /** Default "home" framing of the whole island. */
 export const OVERVIEW_VIEW = {
-  target: [-1, 3, 7] as Vec3,
-  distance: 80,
+  target: [-1, 2, 6] as Vec3,
+  distance: 66,
   /** Degrees down from straight overhead. */
   polar: 64,
   /** Degrees around Y, 0 = looking from the south (+Z), negative = from the west. */

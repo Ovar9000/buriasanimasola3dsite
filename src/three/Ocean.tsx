@@ -19,7 +19,7 @@ import { ASSETS } from '../config/assets'
 import { OCEAN } from '../config/scene'
 import { SimplexNoise } from 'three/examples/jsm/math/SimplexNoise.js'
 import { mulberry32, smoothstep } from '../lib/math'
-import { mesaRho, tailDistance } from './proceduralIsland'
+import { shoreDistance, tailDistance } from './proceduralIsland'
 import { useExplorerStore } from '../store/useExplorerStore'
 import { sampleAtmosphere } from './atmosphere'
 
@@ -92,6 +92,7 @@ const REEF = { size: 130, centre: [-2, 8] as const, resolution: 384 }
  * deep blue. Shaped from the island footprint in `proceduralIsland.ts`.
  */
 function Shallows() {
+  const outlineVersion = useExplorerStore((s) => s.outlineVersion)
   const texture = useMemo(() => {
     const { size: S, resolution: n, centre } = REEF
     const canvas = document.createElement('canvas')
@@ -110,7 +111,7 @@ function Shallows() {
         const x = centre[0] - S / 2 + ((px + 0.5) / n) * S
         const z = centre[1] - S / 2 + ((py + 0.5) / n) * S
         const wobble = reefNoise(x * 0.06, z * 0.06) * 0.35
-        const island = 1 - smoothstep(1.05, 2.35 + wobble, mesaRho(x, z))
+        const island = 1 - smoothstep(1, 13 + wobble * 8, shoreDistance(x, z))
         const tail = tailDistance(x, z)
         const spine = 1 - smoothstep(1.5, 8.5 + wobble * 6, tail.d) * (tail.along < 1 ? 1 : 0)
         const reef = Math.max(island, tail.along < 1 ? spine * (1 - smoothstep(0.85, 1, tail.along)) : 0)
@@ -129,7 +130,8 @@ function Shallows() {
     const t = new CanvasTexture(canvas)
     t.colorSpace = SRGBColorSpace
     return t
-  }, [])
+    // Re-shape the reef whenever the island outline is re-measured.
+  }, [outlineVersion])
 
   useEffect(() => () => texture.dispose(), [texture])
 

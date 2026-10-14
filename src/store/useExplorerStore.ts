@@ -18,6 +18,8 @@ interface ExplorerState {
   quality: QualityTier
   /** Hotspot anchors after being dropped onto the island surface. */
   anchors: Record<string, Vec3>
+  /** Bumped when the island outline changes (GLB measured) so shore-shaped layers rebuild. */
+  outlineVersion: number
   lightbox: { hotspotId: string; index: number } | null
   aboutOpen: boolean
 
@@ -36,6 +38,7 @@ interface ExplorerState {
   setIntroDone: () => void
   setQuality: (q: QualityTier) => void
   setAnchors: (a: Record<string, Vec3>) => void
+  bumpOutline: () => void
   openLightbox: (hotspotId: string, index: number) => void
   closeLightbox: () => void
   setAboutOpen: (v: boolean) => void
@@ -63,6 +66,7 @@ export const useExplorerStore = create<ExplorerState>()((set, get) => ({
   introDone: false,
   quality: initialQuality(),
   anchors: Object.fromEntries(HOTSPOTS.map((h) => [h.id, h.anchor])),
+  outlineVersion: 0,
   lightbox: null,
   aboutOpen: false,
 
@@ -91,6 +95,7 @@ export const useExplorerStore = create<ExplorerState>()((set, get) => ({
   setIntroDone: () => set({ introDone: true }),
   setQuality: (quality) => set({ quality }),
   setAnchors: (anchors) => set({ anchors }),
+  bumpOutline: () => set((s) => ({ outlineVersion: s.outlineVersion + 1 })),
   openLightbox: (hotspotId, index) => set({ lightbox: { hotspotId, index }, touring: false }),
   closeLightbox: () => set({ lightbox: null }),
   setAboutOpen: (aboutOpen) => set({ aboutOpen, touring: aboutOpen ? false : get().touring }),
