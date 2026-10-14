@@ -30,6 +30,7 @@ uniform vec3 eye;
 uniform vec3 waterColor;
 uniform vec3 scatterColor;
 uniform vec3 shallowTint;
+uniform float lagoonGlow;
 
 varying vec4 mirrorCoord;
 varying vec4 worldPosition;
@@ -174,6 +175,11 @@ void main() {
   float sss = pow(max(dot(V, -vec3(L.x, 0.0, L.z)), 0.0), 3.0) * max(slope.x * L.x + slope.y * L.z, 0.0) * 3.0;
   vec3 deep = waterColor * (0.85 + 0.15 * shadow) + scatterColor * sss * sunUp * mix(0.4, 1.0, shadow);
   vec3 body = mix(deep, bottom, transmit);
+  // turquoise / emerald light scattered back up out of the shallows; kept
+  // independent of the sun so the reef still reads at sunset
+  float shallow = 1.0 - smoothstep(0.4, 9.0, depth);
+  vec3 lagoon = mix(vec3(0.02, 0.55, 0.42), vec3(0.05, 0.75, 0.68), smoothstep(0.0, 2.5, depth));
+  body += lagoon * shallow * lagoonGlow * (0.6 + 0.4 * bedSeen.a);
 
   vec3 color = mix(body, reflection, fresnel);
 

@@ -22,6 +22,12 @@ export function useSnapAnchors(island: Object3D | null) {
     const down = new Vector3(0, -1, 0)
     const anchors: Record<string, Vec3> = {}
     for (const h of HOTSPOTS) {
+      const attached = h.attachTo ? island.getObjectByName(h.attachTo) : undefined
+      if (attached) {
+        const p = attached.getWorldPosition(new Vector3())
+        anchors[h.id] = [p.x, p.y + (h.lift ?? 1), p.z]
+        continue
+      }
       if (!h.snap) {
         anchors[h.id] = h.anchor
         continue
@@ -89,10 +95,17 @@ function HotspotMarker({ hotspot, index, hidden }: { hotspot: Hotspot; index: nu
 
   return (
     <group position={position}>
+      {hotspot.category !== 'aerial' && (
+        // glowing leader line from the marker down to the spot it describes
+        <mesh position-y={-(hotspot.lift ?? 1) / 2} visible={!hidden}>
+          <cylinderGeometry args={[0.025, 0.025, hotspot.lift ?? 1, 6, 1, true]} />
+          <meshBasicMaterial color="#7ff3e6" transparent opacity={active ? 0.9 : 0.55} depthWrite={false} toneMapped={false} />
+        </mesh>
+      )}
       {active && hotspot.category !== 'aerial' && (
         <mesh ref={ring} position-y={-(hotspot.lift ?? 1) + 0.15} rotation-x={-Math.PI / 2}>
           <ringGeometry args={[0.9, 1.15, 48]} />
-          <meshBasicMaterial color="#ffffff" transparent depthWrite={false} toneMapped={false} />
+          <meshBasicMaterial color="#8af7ea" transparent depthWrite={false} toneMapped={false} />
         </mesh>
       )}
       {!hidden && (
@@ -114,12 +127,12 @@ function HotspotMarker({ hotspot, index, hidden }: { hotspot: Hotspot; index: nu
               className="group relative flex items-center gap-2 outline-none"
             >
               <span className="relative grid h-11 w-11 place-items-center">
-                {!active && <span className="hotspot-pulse absolute inset-1 rounded-full bg-white/40" style={{ animationDelay: `${index * 0.35}s` }} />}
+                {!active && <span className="hotspot-pulse absolute inset-1 rounded-full bg-lagoon-300/50" style={{ animationDelay: `${index * 0.35}s` }} />}
                 <span
                   className={`relative grid h-9 w-9 place-items-center rounded-full border shadow-lg backdrop-blur-md transition-all duration-300 group-focus-visible:ring-2 group-focus-visible:ring-sky-300 ${
                     active
-                      ? 'scale-110 border-white bg-white text-slate-900'
-                      : 'border-white/60 bg-slate-900/45 text-white group-hover:scale-110 group-hover:bg-slate-900/70'
+                      ? 'scale-110 border-white bg-lagoon-200 text-slate-900 shadow-[0_0_22px_6px_rgba(111,227,212,0.65)]'
+                      : 'border-lagoon-200/90 bg-lagoon-500/30 text-white shadow-[0_0_16px_3px_rgba(60,198,192,0.55)] group-hover:scale-110 group-hover:bg-lagoon-500/55'
                   }`}
                 >
                   <Icon size={16} strokeWidth={2.2} aria-hidden />

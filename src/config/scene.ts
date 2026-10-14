@@ -19,10 +19,13 @@ export const ISLAND = {
    */
   submergedFraction: 0.04,
   /**
-   * Surround the GLB with the procedural beach, slab tail and east-front sign
-   * (features the model doesn't include). Set false to show the model alone.
+   * Also surround the GLB with the procedural beach, slab tail and kiosk /
+   * canopy props. Off by default: the model is shown on its own, with only the
+   * reef shallows and the ANIMASOLA sign added around it.
    */
-  dressing: true,
+  dressing: false,
+  /** World height splitting the detail shader's grass (above) from sand (below). */
+  grassLine: 2.5,
   /** Multiplied into the model's albedo to warm up the rock (white = as exported). */
   tint: '#ffe0c0',
 } as const
@@ -41,8 +44,8 @@ export const OVERVIEW_VIEW = {
   polar: 75,
   /** Degrees around Y, 0 = looking from the south (+Z), negative = from the west. */
   azimuth: -38,
-  /** At sunset the overview swings round to face the setting sun. */
-  sunsetAzimuth: 112,
+  /** At sunset the overview swings round so the low sun rakes across the cliffs from behind the viewer's right. */
+  sunsetAzimuth: -118,
 }
 
 /** Where the camera starts before the intro fly-in. */

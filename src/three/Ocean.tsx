@@ -19,7 +19,7 @@ import { OCEAN } from '../config/scene'
 import { SimplexNoise } from 'three/examples/jsm/math/SimplexNoise.js'
 import { mulberry32, smoothstep } from '../lib/math'
 import { OCEAN_FRAGMENT } from './oceanShader'
-import { shoreDistance, tailDistance, terrainHeight } from './proceduralIsland'
+import { islandHasBeach, shoreDistance, tailDistance, terrainHeight } from './proceduralIsland'
 import { useExplorerStore } from '../store/useExplorerStore'
 import { sampleAtmosphere } from './atmosphere'
 
@@ -62,6 +62,7 @@ export function Ocean() {
       ambient: { value: new Color() },
       scatterColor: { value: new Color() },
       shallowTint: { value: new Color(1, 1, 1) },
+      lagoonGlow: { value: 0 },
     })
     return w
     // `normals` and `seabed` are swapped in place below; only quality should rebuild the reflector.
@@ -94,6 +95,7 @@ export function Ocean() {
     u.waterColor.value.copy(a.water)
     u.scatterColor.value.copy(a.scatter)
     u.shallowTint.value.copy(a.shallows)
+    u.lagoonGlow.value = a.lagoonGlow
   })
 
   return <primitive object={water} />
@@ -110,6 +112,7 @@ const REEF = { size: 130, centre: [-2, 8] as const, resolution: 384 }
  */
 function createSeabedTexture() {
   const { size: S, resolution: n, centre } = REEF
+  const beach = islandHasBeach()
   const data = new Uint8Array(n * n * 4)
   for (let py = 0; py < n; py++) {
     for (let px = 0; px < n; px++) {
@@ -121,7 +124,10 @@ function createSeabedTexture() {
       const tail = tailDistance(x, z)
       const spine = tail.along < 1 ? (1 - smoothstep(1.5, 8.5 + wobble * 6, tail.d)) * (1 - smoothstep(0.85, 1, tail.along)) : 0
       const reef = Math.max(island, spine)
-      const shelf = Math.max(0, -terrainHeight(x, z))
+      const sd = shoreDistance(x, z)
+      // With the beach dressing the bed follows its terrain; around a bare model
+      // it shelves gently from the waterline to the reef flat.
+      const shelf = beach ? Math.max(0, -terrainHeight(x, z)) : sd <= 0 ? 0 : Math.min(3.2, 0.12 + sd * 0.32 + reefNoise(x * 0.3, z * 0.3) * 0.25)
       const depth = Math.min(40, shelf + 34 * Math.pow(1 - reef, 1.6))
       const m = reefNoise(x * 0.22 + 11, z * 0.22)
       const patch = smoothstep(0.1, 0.45, m) * smoothstep(0.15, 0.6, reef) * (1 - smoothstep(0.85, 1, reef))

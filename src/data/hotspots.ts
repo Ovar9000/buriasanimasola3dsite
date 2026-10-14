@@ -30,6 +30,8 @@ export interface Hotspot {
    */
   anchor: Vec3
   snap?: boolean
+  /** Name of an object in the island (e.g. the sign) to anchor to instead; `lift` is added above it. */
+  attachTo?: string
   /** Height above the snapped surface. */
   lift?: number
   /** Never let a snapped marker sink below this height (e.g. over water). */
@@ -124,7 +126,8 @@ export const HOTSPOTS: Hotspot[] = [
     category: 'landmark',
     anchor: [10.6, 1, 0.5],
     snap: true,
-    lift: 2.4,
+    attachTo: 'animasola-sign',
+    lift: 2.2,
     view: { distance: 26, polar: 84, azimuth: 92 },
     summary: 'White letters on the east-front beach — the classic sunset photo stop.',
     description: [

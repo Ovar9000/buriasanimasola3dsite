@@ -55,13 +55,22 @@ export function mesaRadius(phi: number) {
 // ---------------------------------------------------------------------------
 
 let outline: Float32Array | null = null
+let beach = true
 
-/** Use a measured waterline (radius per equal angle step from -π) or `null` for the procedural mesa. */
-export function setIslandOutline(samples: Float32Array | null) {
+/**
+ * Use a measured waterline (radius per equal angle step from -π) or `null`
+ * for the procedural mesa. `withBeach` says whether the procedural beach /
+ * reef-flat terrain is shown around it (it shapes the seabed depth).
+ */
+export function setIslandOutline(samples: Float32Array | null, withBeach = true) {
   outline = samples
+  beach = withBeach
   dressing = null
   full = null
 }
+
+/** Whether the procedural beach terrain surrounds the current island. */
+export const islandHasBeach = () => beach
 
 /** Waterline radius of the current island at angle φ (= atan2(z, x)). */
 export function outlineRadius(phi: number) {
@@ -79,7 +88,7 @@ export function shoreDistance(x: number, z: number) {
 }
 
 /** A point `offset` units out from the east shore at a given Z (marches outward from the centre line). */
-function eastShorePoint(z: number, offset: number): [number, number] {
+export function eastShorePoint(z: number, offset: number): [number, number] {
   let x = 0
   while (x < 60 && shoreDistance(x, z) < 0) x += 0.1
   return [x + offset, z]
@@ -441,16 +450,6 @@ function coloured(g: BufferGeometry, hex: string) {
 
 function buildProps() {
   const parts: BufferGeometry[] = []
-  // Nine white block letters facing east (+X).
-  const [sx, sz] = eastShorePoint(0.5, 2.4)
-  const y0 = terrainHeight(sx, sz)
-  const widths = [0.5, 0.5, 0.2, 0.62, 0.5, 0.42, 0.5, 0.36, 0.5] // A N I M A S O L A
-  const total = widths.reduce((a, w) => a + w + 0.1, -0.1)
-  let cursor = -total / 2
-  for (const w of widths) {
-    parts.push(coloured(new BoxGeometry(0.16, 0.85, w).translate(sx, y0 + 0.42, sz + cursor + w / 2), '#f4f1ea'))
-    cursor += w + 0.1
-  }
   // Small white kiosk.
   const [kx, kz] = eastShorePoint(4, 2.2)
   parts.push(coloured(new BoxGeometry(0.8, 1.4, 0.8).translate(kx, terrainHeight(kx, kz) + 0.7, kz), '#e9e6df'))

@@ -22,6 +22,7 @@ export function Atmosphere() {
   const gl = useThree((s) => s.gl)
   const sun = useRef<DirectionalLight>(null)
   const hemi = useRef<HemisphereLight>(null)
+  const fill = useRef<DirectionalLight>(null)
 
   const sky = useMemo(() => createSkyDome(4000), [])
   useEffect(
@@ -82,6 +83,12 @@ export function Atmosphere() {
       // Fade the key light as the sun grazes the horizon.
       sun.current.intensity = a.sunIntensity * Math.min(1, 0.35 + a.sunDirection.y * 4)
     }
+    if (fill.current) {
+      // From over the viewer's shoulder, a little above the eye line.
+      fill.current.position.set(camera.position.x, camera.position.y + 20, camera.position.z)
+      fill.current.color.copy(a.fillColor)
+      fill.current.intensity = a.fillIntensity
+    }
     if (hemi.current) {
       hemi.current.color.copy(a.hemiSky)
       hemi.current.groundColor.copy(a.hemiGround)
@@ -98,6 +105,7 @@ export function Atmosphere() {
     <>
       <primitive object={sky} />
       <hemisphereLight ref={hemi} />
+      <directionalLight ref={fill} />
       <directionalLight
         ref={sun}
         castShadow={quality !== 'low'}
