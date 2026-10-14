@@ -1,12 +1,8 @@
-import { Environment } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import gsap from 'gsap'
-import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { Fog, Mesh, PMREMGenerator, Scene, type DirectionalLight, type HemisphereLight, type ShaderMaterial, type WebGLRenderTarget } from 'three'
-import { ASSETS } from '../config/assets'
-import type { TimeOfDay } from '../lib/types'
 import { useExplorerStore } from '../store/useExplorerStore'
-import { AssetBoundary } from './AssetBoundary'
 import { atmosphere, PRESETS, sampleAtmosphere } from './atmosphere.ts'
 import { createSkyDome } from './SkyDome'
 
@@ -120,26 +116,15 @@ export function Atmosphere() {
         shadow-camera-near={1}
         shadow-camera-far={300}
       />
-      <ImageBasedLighting timeOfDay={timeOfDay} sky={sky} />
+      <ImageBasedLighting sky={sky} />
     </>
   )
 }
 
-/**
- * Loads the matching HDRI (`env-day.hdr` / `env-sunset.hdr`). If a file is
- * missing, the sky dome itself (clouds, sun and all) is rendered into the
- * environment map instead, so reflections and fill light match the sky.
- */
-function ImageBasedLighting({ timeOfDay, sky }: { timeOfDay: TimeOfDay; sky: Mesh }) {
-  const file = timeOfDay === 'day' ? ASSETS.textures.envDay : ASSETS.textures.envSunset
-  const fallback = <SkyEnvironment sky={sky} />
-  return (
-    <AssetBoundary key={file} name={file.replace(/^.*textures\//, 'textures/')} fallback={fallback}>
-      <Suspense fallback={fallback}>
-        <Environment files={file} background={false} />
-      </Suspense>
-    </AssetBoundary>
-  )
+/** Pre-filters the live sky dome into the environment map for reflections and ambient fill. */
+function ImageBasedLighting({ sky }: { sky: Mesh }) {
+  // Live dynamic PMREM environment filtered from the active sky dome
+  return <SkyEnvironment sky={sky} />
 }
 
 /**

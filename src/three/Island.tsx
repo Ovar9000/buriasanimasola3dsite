@@ -113,17 +113,24 @@ function IslandSign({ position }: { position: Vector3 }) {
   const geometry = useMemo(() => buildSignGeometry(), [])
   useEffect(() => () => geometry.dispose(), [geometry])
   return (
-    <mesh
-      name="animasola-sign"
-      geometry={geometry}
-      position={position}
-      rotation-y={Math.PI / 2}
-      castShadow
-      receiveShadow
-      userData={{ noSnap: true }}
-    >
-      <meshStandardMaterial color="#f7f5ef" roughness={0.38} metalness={0} envMapIntensity={1.2} />
-    </mesh>
+    <group position={position}>
+      {/* Concrete beach foundation slab */}
+      <mesh position={[0, 0.05, 0]} rotation-y={Math.PI / 2} receiveShadow castShadow userData={{ noSnap: true }}>
+        <boxGeometry args={[7.2, 0.1, 0.55]} />
+        <meshStandardMaterial color="#c2b8ad" roughness={0.88} metalness={0} />
+      </mesh>
+      <mesh
+        name="animasola-sign"
+        geometry={geometry}
+        position={[0, 0.1, 0]}
+        rotation-y={Math.PI / 2}
+        castShadow
+        receiveShadow
+        userData={{ noSnap: true }}
+      >
+        <meshStandardMaterial color="#ffffff" roughness={0.32} metalness={0.02} envMapIntensity={1.3} />
+      </mesh>
+    </group>
   )
 }
 
@@ -178,13 +185,13 @@ function IslandDressing() {
   return (
     <>
       <mesh geometry={geo.terrain} receiveShadow>
-        <meshStandardMaterial vertexColors color="#c9b494" roughness={0.96} metalness={0} envMapIntensity={0.6} />
+        <meshStandardMaterial vertexColors roughness={0.92} metalness={0} envMapIntensity={0.6} />
       </mesh>
       <mesh geometry={geo.slabs} castShadow receiveShadow>
-        <meshStandardMaterial vertexColors color="#c7b49c" roughness={0.85} metalness={0} envMapIntensity={0.8} />
+        <meshStandardMaterial vertexColors roughness={0.76} metalness={0} envMapIntensity={0.8} />
       </mesh>
       <mesh geometry={geo.props} castShadow receiveShadow userData={{ noSnap: true }}>
-        <meshStandardMaterial vertexColors roughness={0.6} metalness={0} />
+        <meshStandardMaterial vertexColors roughness={0.65} metalness={0} />
       </mesh>
     </>
   )

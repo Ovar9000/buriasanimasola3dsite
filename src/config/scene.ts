@@ -23,7 +23,7 @@ export const ISLAND = {
    * canopy props. Off by default: the model is shown on its own, with only the
    * reef shallows and the ANIMASOLA sign added around it.
    */
-  dressing: false,
+  dressing: true,
   /** World height splitting the detail shader's grass (above) from sand (below). */
   grassLine: 2.5,
   /** Multiplied into the model's albedo to warm up the rock (white = as exported). */

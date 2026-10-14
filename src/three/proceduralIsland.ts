@@ -139,21 +139,26 @@ export function terrainHeight(x: number, z: number) {
   const east = Math.max(0, Math.cos(phi))
   const width = 1.1 + 2.9 * east * east + fbm2(x * 0.15, z * 0.15, 2) * 0.6
   let h = 0.55 - 1.6 * smoothstep(width - 0.5, width + 1.4, dist)
-  // reef flat, then the drop-off
-  h -= 2.5 * smoothstep(width + 1.5, 24, dist)
+  // reef flat
+  h -= 2.4 * smoothstep(width + 1.5, 12, dist)
   // sand spit leading into the slab tail
   const tail = tailDistance(x, z)
   const spit = (1 - smoothstep(1.2, 3.4, tail.d)) * (1 - smoothstep(0.12, 0.38, tail.along))
-  // (above water where spit > 0.5; sloping away underneath so it doesn't raise the whole reef flat)
   h = Math.max(h, 0.8 * spit - 0.4 - 4 * Math.max(0, 0.5 - spit))
   h += fbm2(x * 0.4, z * 0.4, 2) * 0.08
+  // Deep ocean drop-off: past the reef shelf and slab spine, plunge deep into the abyss
+  // so the terrain mesh perimeter is completely swallowed by water absorption (>30m deep)
+  const spineReef = tail.along < 1.05 ? (1 - smoothstep(2.0, 9.5, tail.d)) * (1 - smoothstep(0.9, 1.05, tail.along)) : 0
+  const shelfEdge = Math.max(11.0, 26.0 * spineReef)
+  const abyss = smoothstep(shelfEdge, shelfEdge + 14.0, dist)
+  h -= abyss * 36.0
   return h
 }
 
-const SAND = new Color('#cbbfa5')
-const PEBBLE = new Color('#b9ab92')
-const SAND_WET = new Color('#9f8f74')
-const SEABED = new Color('#8fb3a6')
+const SAND = new Color('#cbbba0')
+const PEBBLE = new Color('#a89b86')
+const SAND_WET = new Color('#8c7b64')
+const SEABED = new Color('#7aa497')
 
 function buildTerrain() {
   const size = 110
@@ -294,10 +299,10 @@ function buildMesa() {
 // Flat rock slabs (the tail) + rubble at the cliff foot
 // ---------------------------------------------------------------------------
 
-const SLAB_COLORS = ['#6e5440', '#7b604a', '#625040', '#856a52'].map((h) => new Color(h))
-const RUBBLE = new Color('#6f5a47')
+const SLAB_COLORS = ['#c4a880', '#b89a72', '#d2b68c', '#ab8e66', '#d9c49e'].map((h) => new Color(h))
+const RUBBLE = new Color('#a88b68')
 
-const SLAB_WET = new Color('#3b3128')
+const SLAB_WET = new Color('#5a4836')
 
 function slab(x: number, z: number, length: number, width: number, height: number, yaw: number, rand: () => number) {
   const SIDES = 28
@@ -450,16 +455,31 @@ function coloured(g: BufferGeometry, hex: string) {
 
 function buildProps() {
   const parts: BufferGeometry[] = []
-  // Small white kiosk.
-  const [kx, kz] = eastShorePoint(4, 2.2)
-  parts.push(coloured(new BoxGeometry(0.8, 1.4, 0.8).translate(kx, terrainHeight(kx, kz) + 0.7, kz), '#e9e6df'))
-  // Red canopy on four poles.
-  const [tx, tz] = eastShorePoint(7, 2.4)
+  // Authentic Philippine coastal nipa hut / thatched beach cottage (as seen in photo 2)
+  const [tx, tz] = eastShorePoint(6.5, 2.6)
   const ty = terrainHeight(tx, tz)
-  for (const [dx, dz] of [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]]) {
-    parts.push(coloured(new CylinderGeometry(0.04, 0.04, 1.5, 5).translate(tx + dx, ty + 0.75, tz + dz), '#d7d3cc'))
+
+  const postColor = '#947a57'
+  const hw = 0.85
+  const hd = 0.65
+  // Bamboo corner stilts
+  for (const [dx, dz] of [[-hw, -hd], [hw, -hd], [-hw, hd], [hw, hd]]) {
+    parts.push(coloured(new CylinderGeometry(0.045, 0.045, 1.55, 6).translate(tx + dx, ty + 0.775, tz + dz), postColor))
   }
-  parts.push(coloured(new ConeGeometry(1.25, 0.55, 4).rotateY(Math.PI / 4).translate(tx, ty + 1.75, tz), '#d83a2c'))
+  // Low bamboo deck / bench platform
+  parts.push(coloured(new BoxGeometry(hw * 2 + 0.15, 0.08, hd * 2 + 0.15).translate(tx, ty + 0.42, tz), '#b5976b'))
+  // Wooden roof rafters
+  parts.push(coloured(new BoxGeometry(hw * 2 + 0.2, 0.06, 0.06).translate(tx, ty + 1.5, tz - hd), postColor))
+  parts.push(coloured(new BoxGeometry(hw * 2 + 0.2, 0.06, 0.06).translate(tx, ty + 1.5, tz + hd), postColor))
+  parts.push(coloured(new BoxGeometry(0.06, 0.06, hd * 2 + 0.2).translate(tx - hw, ty + 1.5, tz), postColor))
+  parts.push(coloured(new BoxGeometry(0.06, 0.06, hd * 2 + 0.2).translate(tx + hw, ty + 1.5, tz), postColor))
+  // Traditional thatched cogon / nipa roof with steep gable and eaves
+  const roof = new ConeGeometry(1.5, 0.85, 4)
+  roof.rotateY(Math.PI / 4)
+  roof.scale(1.25, 1.0, 0.95)
+  roof.translate(tx, ty + 1.95, tz)
+  parts.push(coloured(roof, '#7c6242'))
+
   const merged = mergeGeometries(parts, false)!
   parts.forEach((g) => g.dispose())
   merged.computeVertexNormals()

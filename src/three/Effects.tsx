@@ -43,9 +43,9 @@ export function Effects() {
       />
       <Bloom ref={bloom} mipmapBlur luminanceThreshold={0.9} luminanceSmoothing={0.25} intensity={0.35} radius={0.75} levels={high ? 8 : 6} />
       <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
-      <HueSaturation saturation={0.08} />
-      <BrightnessContrast brightness={0.0} contrast={0.07} />
-      <Vignette offset={0.3} darkness={high ? 0.42 : 0.35} />
+      <HueSaturation saturation={0.12} />
+      <BrightnessContrast brightness={0.01} contrast={0.08} />
+      <Vignette offset={0.35} darkness={high ? 0.32 : 0.24} />
       {!high && <SMAA />}
     </EffectComposer>
   )
