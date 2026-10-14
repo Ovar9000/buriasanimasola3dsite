@@ -23,6 +23,8 @@ export const ISLAND = {
    * (features the model doesn't include). Set false to show the model alone.
    */
   dressing: true,
+  /** Multiplied into the model's albedo to warm up the rock (white = as exported). */
+  tint: '#ffe0c0',
 } as const
 
 export const OCEAN = {
@@ -33,10 +35,10 @@ export const OCEAN = {
 
 /** Default "home" framing of the whole island. */
 export const OVERVIEW_VIEW = {
-  target: [-1, 2, 6] as Vec3,
-  distance: 66,
+  target: [-1, 3, 6] as Vec3,
+  distance: 60,
   /** Degrees down from straight overhead. */
-  polar: 64,
+  polar: 75,
   /** Degrees around Y, 0 = looking from the south (+Z), negative = from the west. */
   azimuth: -38,
   /** At sunset the overview swings round to face the setting sun. */

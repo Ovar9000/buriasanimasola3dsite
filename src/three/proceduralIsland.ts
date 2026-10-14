@@ -135,7 +135,8 @@ export function terrainHeight(x: number, z: number) {
   // sand spit leading into the slab tail
   const tail = tailDistance(x, z)
   const spit = (1 - smoothstep(1.2, 3.4, tail.d)) * (1 - smoothstep(0.12, 0.38, tail.along))
-  h = Math.max(h, 0.4 * spit - 0.4 * (1 - spit))
+  // (above water where spit > 0.5; sloping away underneath so it doesn't raise the whole reef flat)
+  h = Math.max(h, 0.8 * spit - 0.4 - 4 * Math.max(0, 0.5 - spit))
   h += fbm2(x * 0.4, z * 0.4, 2) * 0.08
   return h
 }
@@ -287,21 +288,28 @@ function buildMesa() {
 const SLAB_COLORS = ['#6e5440', '#7b604a', '#625040', '#856a52'].map((h) => new Color(h))
 const RUBBLE = new Color('#6f5a47')
 
+const SLAB_WET = new Color('#3b3128')
+
 function slab(x: number, z: number, length: number, width: number, height: number, yaw: number, rand: () => number) {
-  const g = new CylinderGeometry(1, 1, 1, 10, 1)
+  const SIDES = 28
+  const g = new CylinderGeometry(1, 1, 1, SIDES, 3)
   g.deleteAttribute('uv')
   const pos = g.attributes.position
-  const jitter = Array.from({ length: 10 }, () => 0.78 + rand() * 0.3)
+  const seed = rand() * 100
   const tiltX = (rand() - 0.5) * 0.08
   const tiltZ = (rand() - 0.5) * 0.08
   const v = new Vector3()
   for (let i = 0; i < pos.count; i++) {
     v.fromBufferAttribute(pos, i)
-    if (Math.hypot(v.x, v.z) > 0.01) {
-      const a = (Math.atan2(v.z, v.x) / (Math.PI * 2) + 1) % 1
-      const k = jitter[Math.round(a * 10) % 10]
-      v.x *= k
-      v.z *= k
+    const r = Math.hypot(v.x, v.z)
+    if (r > 0.01) {
+      // smooth, irregular outline with a couple of chipped corners
+      const a = Math.atan2(v.z, v.x)
+      const k = 0.86 + simplex.noise(Math.cos(a) * 1.1 + seed, Math.sin(a) * 1.1) * 0.16 + simplex.noise(Math.cos(a) * 3.2 - seed, Math.sin(a) * 3.2) * 0.05
+      // rounded, weathered top edge
+      const bevel = v.y > 0.49 ? 0.9 : v.y > 0.1 ? 0.975 : 1
+      v.x *= k * bevel
+      v.z *= k * bevel
     }
     v.x *= length / 2
     v.z *= width / 2
@@ -316,7 +324,13 @@ function slab(x: number, z: number, length: number, width: number, height: numbe
   const colors = new Float32Array(pos.count * 3)
   const cc = new Color()
   for (let i = 0; i < pos.count; i++) {
-    cc.copy(col).offsetHSL(0, 0, nrm.getY(i) > 0.7 ? 0.06 : -0.06)
+    const wx = pos.getX(i)
+    const wy = pos.getY(i)
+    const wz = pos.getZ(i)
+    cc.copy(col).offsetHSL(0, 0, nrm.getY(i) > 0.7 ? 0.05 : -0.05)
+    // weathering blotches, and a dark wet band where the sea laps the stone
+    cc.offsetHSL(0, -0.02, simplex.noise(wx * 0.9 + seed, wz * 0.9) * 0.05)
+    cc.lerp(SLAB_WET, (1 - smoothstep(-0.05, 0.22, wy)) * 0.75)
     colors.set([cc.r, cc.g, cc.b], i * 3)
   }
   g.setAttribute('color', new Float32BufferAttribute(colors, 3))

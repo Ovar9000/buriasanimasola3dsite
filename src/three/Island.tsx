@@ -2,7 +2,7 @@ import { useGLTF } from '@react-three/drei'
 import type { ThreeEvent } from '@react-three/fiber'
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import { useExplorerStore } from '../store/useExplorerStore'
-import { Box3, Group, Matrix4, Mesh, Vector3, type Object3D } from 'three'
+import { Box3, Color, Group, Matrix4, Mesh, Vector3, type MeshStandardMaterial, type Object3D } from 'three'
 import { ASSETS } from '../config/assets'
 import { ISLAND } from '../config/scene'
 import { AssetBoundary } from './AssetBoundary'
@@ -54,6 +54,7 @@ function IslandModel({ onReady }: IslandProps) {
         const m = o as Mesh
         m.castShadow = true
         m.receiveShadow = true
+        gradeMaterial(m.material as MeshStandardMaterial)
       }
     })
     const position = new Vector3(-centre.x * s, -waterline * s, -centre.z * s)
@@ -78,16 +79,31 @@ function IslandModel({ onReady }: IslandProps) {
   )
 }
 
+const graded = new WeakSet<MeshStandardMaterial>()
+
+/**
+ * Scan exports tend to come out grey and slightly metallic, which reads as
+ * dull concrete under a tropical sun. Make the rock fully dielectric and warm
+ * its albedo toward the honey-brown of the real cliffs.
+ */
+function gradeMaterial(mat: MeshStandardMaterial) {
+  if (!mat?.isMeshStandardMaterial || graded.has(mat)) return
+  graded.add(mat)
+  mat.metalness = 0
+  mat.color.multiply(new Color(ISLAND.tint))
+  mat.envMapIntensity = 1.1
+}
+
 /** Beach, slab tail and sign beach in world units (shared with the procedural island). */
 function IslandDressing() {
   const geo = useMemo(() => getIslandDressing(), [])
   return (
     <>
       <mesh geometry={geo.terrain} receiveShadow>
-        <meshStandardMaterial vertexColors roughness={0.96} metalness={0} envMapIntensity={0.6} />
+        <meshStandardMaterial vertexColors color="#c9b494" roughness={0.96} metalness={0} envMapIntensity={0.6} />
       </mesh>
       <mesh geometry={geo.slabs} castShadow receiveShadow>
-        <meshStandardMaterial vertexColors roughness={0.85} metalness={0} envMapIntensity={0.8} />
+        <meshStandardMaterial vertexColors color="#c7b49c" roughness={0.85} metalness={0} envMapIntensity={0.8} />
       </mesh>
       <mesh geometry={geo.props} castShadow receiveShadow userData={{ noSnap: true }}>
         <meshStandardMaterial vertexColors roughness={0.6} metalness={0} />

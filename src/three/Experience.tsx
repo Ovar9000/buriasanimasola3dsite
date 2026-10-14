@@ -1,7 +1,7 @@
 import { PerformanceMonitor } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
 import { Suspense, useCallback, useEffect, useState } from 'react'
-import { NeutralToneMapping, type Object3D } from 'three'
+import { ACESFilmicToneMapping, type Object3D } from 'three'
 import type { QualityTier } from '../lib/types'
 import { useExplorerStore } from '../store/useExplorerStore'
 import { Atmosphere } from './Atmosphere'
@@ -18,6 +18,10 @@ const DPR: Record<QualityTier, [number, number]> = {
 }
 
 const TIERS: QualityTier[] = ['low', 'medium', 'high']
+
+/** Dev only: `?quality=high` pins the tier and turns off adaptive quality (handy for screenshots). */
+const PINNED = import.meta.env.DEV ? (new URLSearchParams(location.search).get('quality') as QualityTier | null) : null
+if (PINNED && TIERS.includes(PINNED)) useExplorerStore.getState().setQuality(PINNED)
 
 export function Experience() {
   const quality = useExplorerStore((s) => s.quality)
@@ -44,15 +48,17 @@ export function Experience() {
       shadows="percentage"
       dpr={DPR[quality]}
       camera={{ fov: 42, near: 0.5, far: 9000, position: [-210, 95, 260] }}
-      gl={{ antialias, powerPreference: 'high-performance', toneMapping: NeutralToneMapping }}
+      gl={{ antialias, powerPreference: 'high-performance', toneMapping: ACESFilmicToneMapping }}
       aria-label="Interactive 3D model of Animasola Island"
     >
-      <PerformanceMonitor
-        flipflops={3}
-        onDecline={() => step(-1)}
-        onIncline={() => step(1)}
-        onFallback={() => setQuality('low')}
-      />
+      {!PINNED && (
+        <PerformanceMonitor
+          flipflops={3}
+          onDecline={() => step(-1)}
+          onIncline={() => step(1)}
+          onFallback={() => setQuality('low')}
+        />
+      )}
       <Atmosphere />
       <Ocean />
       <Suspense fallback={null}>

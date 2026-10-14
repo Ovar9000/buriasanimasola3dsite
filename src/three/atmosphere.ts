@@ -24,10 +24,20 @@ interface Preset {
   /** Sun disc + halo colour in the sky dome. */
   sunGlow: string
   glowStrength: number
+  /** Lit and shaded sides of the clouds. */
+  cloudLit: string
+  cloudShade: string
+  /** 0 = clear, 1 = overcast. */
+  cloudCover: number
   fog: string
+  /** Deep-water colour. */
   water: string
+  /** Light scattered through sunlit wave flanks. */
+  scatter: string
   /** Tint multiplied over the reef-flat texture. */
   shallows: string
+  /** Strength of the screen-space ambient occlusion. */
+  ao: number
   envIntensity: number
   exposure: number
   bloom: number
@@ -35,44 +45,54 @@ interface Preset {
 
 export const PRESETS: Record<'day' | 'sunset', Preset> = {
   day: {
-    sunElevation: 55,
+    sunElevation: 52,
     sunAzimuth: 35,
-    sunColor: '#fff4e3',
-    sunIntensity: 2.1,
-    hemiSky: '#cfe6ff',
-    hemiGround: '#cdb995',
-    hemiIntensity: 0.85,
-    zenith: '#2a74c6',
-    horizon: '#a9d4ea',
-    horizonSun: '#d9eefa',
+    sunColor: '#fff0d8',
+    sunIntensity: 2.7,
+    hemiSky: '#b9d9ff',
+    hemiGround: '#8fb2a8',
+    hemiIntensity: 0.9,
+    zenith: '#1561c9',
+    horizon: '#9ccdee',
+    horizonSun: '#d4ecfb',
     sunGlow: '#fff3d6',
-    glowStrength: 0.35,
-    fog: '#a9d1e6',
-    water: '#0a5466',
+    glowStrength: 0.45,
+    cloudLit: '#ffffff',
+    cloudShade: '#a3b6cc',
+    cloudCover: 0.5,
+    fog: '#a2cdec',
+    water: '#06345a',
+    scatter: '#1aa6a0',
     shallows: '#ffffff',
-    envIntensity: 0.85,
+    ao: 2.2,
+    envIntensity: 0.9,
     exposure: 1,
-    bloom: 0.3,
+    bloom: 0.35,
   },
   sunset: {
-    sunElevation: 4,
+    sunElevation: 5,
     sunAzimuth: -68,
-    sunColor: '#ff9548',
-    sunIntensity: 2.2,
-    hemiSky: '#e6a28c',
-    hemiGround: '#3a2a3c',
-    hemiIntensity: 0.6,
-    zenith: '#22305e',
-    horizon: '#b98aa2',
-    horizonSun: '#ffa057',
+    sunColor: '#ff9a4f',
+    sunIntensity: 3.2,
+    hemiSky: '#e3a28f',
+    hemiGround: '#3c2c42',
+    hemiIntensity: 0.55,
+    zenith: '#1b2a63',
+    horizon: '#c48aa3',
+    horizonSun: '#ffa45a',
     sunGlow: '#ffc27a',
-    glowStrength: 1.1,
-    fog: '#c1909a',
-    water: '#13304a',
-    shallows: '#a28e9e',
-    envIntensity: 0.55,
-    exposure: 1,
-    bloom: 0.75,
+    glowStrength: 0.85,
+    cloudLit: '#ffb58a',
+    cloudShade: '#6a4c78',
+    cloudCover: 0.58,
+    fog: '#c6919f',
+    water: '#0f2442',
+    scatter: '#8c5a46',
+    shallows: '#b29aa8',
+    ao: 1.6,
+    envIntensity: 0.7,
+    exposure: 0.95,
+    bloom: 0.8,
   },
 }
 
@@ -91,9 +111,14 @@ export const sampled = {
   horizonSun: new Color(),
   sunGlow: new Color(),
   glowStrength: 0,
+  cloudLit: new Color(),
+  cloudShade: new Color(),
+  cloudCover: 0,
   fog: new Color(),
   water: new Color(),
+  scatter: new Color(),
   shallows: new Color(),
+  ao: 0,
   envIntensity: 1,
   exposure: 1,
   bloom: 0,
@@ -122,6 +147,11 @@ export function sampleAtmosphere() {
   mixColor(sampled.hemiGround, a.hemiGround, b.hemiGround, t)
   mixColor(sampled.fog, a.fog, b.fog, t)
   mixColor(sampled.water, a.water, b.water, t)
+  mixColor(sampled.scatter, a.scatter, b.scatter, t)
+  mixColor(sampled.cloudLit, a.cloudLit, b.cloudLit, t)
+  mixColor(sampled.cloudShade, a.cloudShade, b.cloudShade, t)
+  sampled.cloudCover = lerp(a.cloudCover, b.cloudCover)
+  sampled.ao = lerp(a.ao, b.ao)
   mixColor(sampled.shallows, a.shallows, b.shallows, t)
   sampled.sunIntensity = lerp(a.sunIntensity, b.sunIntensity)
   sampled.hemiIntensity = lerp(a.hemiIntensity, b.hemiIntensity)

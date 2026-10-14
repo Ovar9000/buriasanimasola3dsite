@@ -1,16 +1,15 @@
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useState } from 'react'
 import {
-  CanvasTexture,
   Color,
-  SRGBColorSpace,
   DataTexture,
+  LinearFilter,
   LinearMipmapLinearFilter,
-  type MeshBasicMaterial,
   PlaneGeometry,
   RepeatWrapping,
   RGBAFormat,
   TextureLoader,
+  Vector4,
   type ShaderMaterial,
   type Texture,
 } from 'three'
@@ -19,21 +18,27 @@ import { ASSETS } from '../config/assets'
 import { OCEAN } from '../config/scene'
 import { SimplexNoise } from 'three/examples/jsm/math/SimplexNoise.js'
 import { mulberry32, smoothstep } from '../lib/math'
-import { shoreDistance, tailDistance } from './proceduralIsland'
+import { OCEAN_FRAGMENT } from './oceanShader'
+import { shoreDistance, tailDistance, terrainHeight } from './proceduralIsland'
 import { useExplorerStore } from '../store/useExplorerStore'
 import { sampleAtmosphere } from './atmosphere'
 
 /**
- * Reflective ocean (three.js `Water`) using `water-normals.jpg`, plus a soft
- * turquoise "shallows" halo around the island. If the normal map is missing a
- * tileable one is synthesised so the sea still ripples.
+ * The sea: three.js `Water` for its planar reflection, with a custom shader
+ * (`oceanShader.ts`) for band-limited procedural waves, Fresnel, sun glint,
+ * a depth-lit turquoise lagoon over a baked seabed, caustics and shore foam.
+ * If `water-normals.jpg` is missing, a tileable ripple map is synthesised.
  */
 export function Ocean() {
   const quality = useExplorerStore((s) => s.quality)
+  const outlineVersion = useExplorerStore((s) => s.outlineVersion)
   const normals = useWaterNormals()
+  // Re-bake the seabed whenever the island outline is re-measured.
+  const seabed = useMemo(() => createSeabedTexture(), [outlineVersion])
+  useEffect(() => () => seabed.dispose(), [seabed])
 
   const water = useMemo(() => {
-    const res = quality === 'high' ? 1024 : quality === 'medium' ? 512 : 256
+    const res = quality === 'high' ? 1024 : quality === 'medium' ? 768 : 384
     const w = new Water(new PlaneGeometry(OCEAN.size, OCEAN.size), {
       textureWidth: res,
       textureHeight: res,
@@ -41,21 +46,32 @@ export function Ocean() {
       sunDirection: sampleAtmosphere().sunDirection.clone(),
       sunColor: 0xffffff,
       waterColor: OCEAN.dayColor,
-      distortionScale: 1.6,
+      distortionScale: 2.2,
       fog: true,
     })
     w.rotation.x = -Math.PI / 2
     w.renderOrder = -1
-    const u = (w.material as ShaderMaterial).uniforms
-    u.size.value = 14
-    u.alpha.value = 1
+    w.receiveShadow = true
+    const m = w.material as ShaderMaterial
+    m.fragmentShader = OCEAN_FRAGMENT
+    m.defines = { OCEAN_WAVES: quality === 'low' ? 6 : 10, ...(quality === 'low' ? {} : { OCEAN_CAUSTICS: '' }) }
+    Object.assign(m.uniforms, {
+      seabed: { value: null },
+      seabedRect: { value: new Vector4(REEF.centre[0] - REEF.size / 2, REEF.centre[1] - REEF.size / 2, REEF.size, REEF.size) },
+      sunIntensity: { value: 1 },
+      ambient: { value: new Color() },
+      scatterColor: { value: new Color() },
+      shallowTint: { value: new Color(1, 1, 1) },
+    })
     return w
-    // `normals` is swapped in place below; only quality should rebuild the reflector.
+    // `normals` and `seabed` are swapped in place below; only quality should rebuild the reflector.
   }, [quality])
 
   useEffect(() => {
-    ;(water.material as ShaderMaterial).uniforms.normalSampler.value = normals
-  }, [water, normals])
+    const u = (water.material as ShaderMaterial).uniforms
+    u.normalSampler.value = normals
+    u.seabed.value = seabed
+  }, [water, normals, seabed])
 
   useEffect(
     () => () => {
@@ -70,83 +86,58 @@ export function Ocean() {
   useFrame((_, delta) => {
     const a = sampleAtmosphere()
     const u = (water.material as ShaderMaterial).uniforms
-    u.time.value += Math.min(delta, 0.1) * 0.8
+    u.time.value += Math.min(delta, 0.1)
     u.sunDirection.value.copy(a.sunDirection)
     u.sunColor.value.copy(a.sunColor)
+    u.sunIntensity.value = a.sunIntensity
+    u.ambient.value.copy(a.hemiSky).multiplyScalar(a.hemiIntensity)
     u.waterColor.value.copy(a.water)
+    u.scatterColor.value.copy(a.scatter)
+    u.shallowTint.value.copy(a.shallows)
   })
 
-  return (
-    <>
-      <primitive object={water} />
-      <Shallows />
-    </>
-  )
+  return <primitive object={water} />
 }
 
+/** Area covered by the baked seabed (world units); outside it the sea is deep. */
 const REEF = { size: 130, centre: [-2, 8] as const, resolution: 384 }
 
 /**
- * Turquoise reef flat laid just above the sea: bright over sand near the
- * shore and along the slab tail, mottled with darker coral, fading to the
- * deep blue. Shaped from the island footprint in `proceduralIsland.ts`.
+ * Bakes the seabed around the island into a texture the ocean shader reads:
+ * R = sqrt(depth / 40 m), G = coral / weed cover, B = weed vs coral,
+ * A = sand brightness. Depth follows the beach / reef terrain near the shore
+ * and the slab tail, then drops off to open water.
  */
-function Shallows() {
-  const outlineVersion = useExplorerStore((s) => s.outlineVersion)
-  const texture = useMemo(() => {
-    const { size: S, resolution: n, centre } = REEF
-    const canvas = document.createElement('canvas')
-    canvas.width = canvas.height = n
-    const ctx = canvas.getContext('2d')!
-    const img = ctx.createImageData(n, n)
-    const near = new Color('#8ae8d9')
-    const mid = new Color('#34c1b8')
-    const far = new Color('#1b8b98')
-    const coral = new Color('#2d5f5c')
-    const weed = new Color('#5d6d4c')
-    const c = new Color()
-    for (let py = 0; py < n; py++) {
-      for (let px = 0; px < n; px++) {
-        // canvas row 0 = far (-Z) edge once the plane is laid flat
-        const x = centre[0] - S / 2 + ((px + 0.5) / n) * S
-        const z = centre[1] - S / 2 + ((py + 0.5) / n) * S
-        const wobble = reefNoise(x * 0.06, z * 0.06) * 0.35
-        const island = 1 - smoothstep(1, 13 + wobble * 8, shoreDistance(x, z))
-        const tail = tailDistance(x, z)
-        const spine = 1 - smoothstep(1.5, 8.5 + wobble * 6, tail.d) * (tail.along < 1 ? 1 : 0)
-        const reef = Math.max(island, tail.along < 1 ? spine * (1 - smoothstep(0.85, 1, tail.along)) : 0)
-        c.copy(far).lerp(mid, smoothstep(0.1, 0.55, reef)).lerp(near, smoothstep(0.6, 0.95, reef))
-        const m = reefNoise(x * 0.22 + 11, z * 0.22)
-        const patch = smoothstep(0.1, 0.45, m) * smoothstep(0.15, 0.6, reef) * (1 - smoothstep(0.85, 1, reef))
-        c.lerp(m > 0.3 ? weed : coral, patch * 0.65)
-        const i = (py * n + px) * 4
-        img.data[i] = c.r * 255
-        img.data[i + 1] = c.g * 255
-        img.data[i + 2] = c.b * 255
-        img.data[i + 3] = Math.pow(smoothstep(0, 0.55, reef), 1.4) * 235
-      }
+function createSeabedTexture() {
+  const { size: S, resolution: n, centre } = REEF
+  const data = new Uint8Array(n * n * 4)
+  for (let py = 0; py < n; py++) {
+    for (let px = 0; px < n; px++) {
+      // row 0 = the -Z (north) edge, i.e. v = 0
+      const x = centre[0] - S / 2 + ((px + 0.5) / n) * S
+      const z = centre[1] - S / 2 + ((py + 0.5) / n) * S
+      const wobble = reefNoise(x * 0.06, z * 0.06) * 0.35
+      const island = 1 - smoothstep(1, 13 + wobble * 8, shoreDistance(x, z))
+      const tail = tailDistance(x, z)
+      const spine = tail.along < 1 ? (1 - smoothstep(1.5, 8.5 + wobble * 6, tail.d)) * (1 - smoothstep(0.85, 1, tail.along)) : 0
+      const reef = Math.max(island, spine)
+      const shelf = Math.max(0, -terrainHeight(x, z))
+      const depth = Math.min(40, shelf + 34 * Math.pow(1 - reef, 1.6))
+      const m = reefNoise(x * 0.22 + 11, z * 0.22)
+      const patch = smoothstep(0.1, 0.45, m) * smoothstep(0.15, 0.6, reef) * (1 - smoothstep(0.85, 1, reef))
+      const i = (py * n + px) * 4
+      data[i] = Math.sqrt(depth / 40) * 255
+      data[i + 1] = patch * 255
+      data[i + 2] = (m > 0.3 ? 1 : 0) * 255
+      data[i + 3] = (reefNoise(x * 0.9 - 5, z * 0.9) * 0.5 + 0.5) * 255
     }
-    ctx.putImageData(img, 0, 0)
-    const t = new CanvasTexture(canvas)
-    t.colorSpace = SRGBColorSpace
-    return t
-    // Re-shape the reef whenever the island outline is re-measured.
-  }, [outlineVersion])
-
-  useEffect(() => () => texture.dispose(), [texture])
-
-  const [material, setMaterial] = useState<MeshBasicMaterial | null>(null)
-
-  useFrame(() => {
-    if (material) material.color.copy(sampleAtmosphere().shallows)
-  })
-
-  return (
-    <mesh rotation-x={-Math.PI / 2} position={[REEF.centre[0], 0.04, REEF.centre[1]]} renderOrder={1}>
-      <planeGeometry args={[REEF.size, REEF.size]} />
-      <meshBasicMaterial ref={setMaterial} map={texture} transparent opacity={0.72} depthWrite={false} fog />
-    </mesh>
-  )
+  }
+  const t = new DataTexture(data, n, n, RGBAFormat)
+  t.minFilter = LinearMipmapLinearFilter
+  t.magFilter = LinearFilter
+  t.generateMipmaps = true
+  t.needsUpdate = true
+  return t
 }
 
 const reefNoiseGen = new SimplexNoise({ random: mulberry32(7) })
@@ -183,10 +174,10 @@ function useWaterNormals() {
 /** Tileable normal map built from a sum of integer-frequency waves. */
 function createProceduralWaterNormals(size = 256): Texture {
   const rand = mulberry32(42)
-  const waves = Array.from({ length: 24 }, () => {
-    const kx = Math.round((rand() - 0.5) * 16)
-    const ky = Math.round((rand() - 0.5) * 16)
-    return { kx, ky, amp: 1 / (1 + Math.hypot(kx, ky)), phase: rand() * Math.PI * 2 }
+  const waves = Array.from({ length: 64 }, () => {
+    const kx = Math.round((rand() - 0.5) * 22)
+    const ky = Math.round((rand() - 0.5) * 22)
+    return { kx, ky, amp: 1 / Math.pow(1 + Math.hypot(kx, ky), 1.5), phase: rand() * Math.PI * 2 }
   }).filter((w) => w.kx !== 0 || w.ky !== 0)
 
   const data = new Uint8Array(size * size * 4)
