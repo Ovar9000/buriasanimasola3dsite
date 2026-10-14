@@ -4,7 +4,7 @@ import type { BloomEffect } from 'postprocessing'
 import { ToneMappingMode } from 'postprocessing'
 import { useRef } from 'react'
 import { useExplorerStore } from '../store/useExplorerStore'
-import { sampleAtmosphere } from './atmosphere'
+import { sampleAtmosphere } from './atmosphere.ts'
 
 /** The bit of n8ao's (untyped) post pass we drive per frame. */
 type N8AOPass = { configuration: { intensity: number } }

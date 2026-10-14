@@ -7,7 +7,7 @@ import { ASSETS } from '../config/assets'
 import type { TimeOfDay } from '../lib/types'
 import { useExplorerStore } from '../store/useExplorerStore'
 import { AssetBoundary } from './AssetBoundary'
-import { atmosphere, PRESETS, sampleAtmosphere } from './atmosphere'
+import { atmosphere, PRESETS, sampleAtmosphere } from './atmosphere.ts'
 import { createSkyDome } from './SkyDome'
 
 const SHADOW_EXTENT = 42

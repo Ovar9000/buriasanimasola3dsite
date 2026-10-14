@@ -21,7 +21,7 @@ import { mulberry32, smoothstep } from '../lib/math'
 import { OCEAN_FRAGMENT } from './oceanShader'
 import { islandHasBeach, shoreDistance, tailDistance, terrainHeight } from './proceduralIsland'
 import { useExplorerStore } from '../store/useExplorerStore'
-import { sampleAtmosphere } from './atmosphere'
+import { sampleAtmosphere } from './atmosphere.ts'
 
 /**
  * The sea: three.js `Water` for its planar reflection, with a custom shader
