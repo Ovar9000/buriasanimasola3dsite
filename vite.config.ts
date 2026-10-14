@@ -9,7 +9,8 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
     target: 'es2022',
-    chunkSizeWarningLimit: 1500,
+    // The three.js / R3F / post-processing (incl. N8AO) chunk is ~1.6 MB raw, ~520 kB gzip.
+    chunkSizeWarningLimit: 1700,
     rollupOptions: {
       output: {
         manualChunks(id: string) {

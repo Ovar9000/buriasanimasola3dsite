@@ -15,6 +15,9 @@ interface Preset {
   hemiSky: string
   hemiGround: string
   hemiIntensity: number
+  /** Fill light from the camera side, so faces turned away from the sun keep their detail. */
+  fillColor: string
+  fillIntensity: number
   /** Sky dome gradient. */
   zenith: string
   /** Horizon colour facing away from the sun. */
@@ -24,10 +27,22 @@ interface Preset {
   /** Sun disc + halo colour in the sky dome. */
   sunGlow: string
   glowStrength: number
+  /** Lit and shaded sides of the clouds. */
+  cloudLit: string
+  cloudShade: string
+  /** 0 = clear, 1 = overcast. */
+  cloudCover: number
   fog: string
+  /** Deep-water colour. */
   water: string
+  /** Light scattered through sunlit wave flanks. */
+  scatter: string
   /** Tint multiplied over the reef-flat texture. */
   shallows: string
+  /** Turquoise light scattered up out of the shallows, independent of the sun angle. */
+  lagoonGlow: number
+  /** Strength of the screen-space ambient occlusion. */
+  ao: number
   envIntensity: number
   exposure: number
   bloom: number
@@ -35,44 +50,60 @@ interface Preset {
 
 export const PRESETS: Record<'day' | 'sunset', Preset> = {
   day: {
-    sunElevation: 55,
+    sunElevation: 52,
     sunAzimuth: 35,
-    sunColor: '#fff4e3',
-    sunIntensity: 2.1,
-    hemiSky: '#cfe6ff',
-    hemiGround: '#cdb995',
-    hemiIntensity: 0.85,
-    zenith: '#2a74c6',
-    horizon: '#a9d4ea',
-    horizonSun: '#d9eefa',
+    sunColor: '#fff0d8',
+    sunIntensity: 2.7,
+    hemiSky: '#b9d9ff',
+    hemiGround: '#8fb2a8',
+    hemiIntensity: 0.9,
+    fillColor: '#d6e6ff',
+    fillIntensity: 0.35,
+    zenith: '#1561c9',
+    horizon: '#9ccdee',
+    horizonSun: '#d4ecfb',
     sunGlow: '#fff3d6',
-    glowStrength: 0.35,
-    fog: '#a9d1e6',
-    water: '#0a5466',
+    glowStrength: 0.45,
+    cloudLit: '#ffffff',
+    cloudShade: '#a3b6cc',
+    cloudCover: 0.5,
+    fog: '#a2cdec',
+    water: '#06345a',
+    scatter: '#1aa6a0',
     shallows: '#ffffff',
-    envIntensity: 0.85,
+    lagoonGlow: 0.1,
+    ao: 2.2,
+    envIntensity: 0.9,
     exposure: 1,
-    bloom: 0.3,
+    bloom: 0.35,
   },
   sunset: {
-    sunElevation: 4,
-    sunAzimuth: -68,
-    sunColor: '#ff9548',
-    sunIntensity: 2.2,
-    hemiSky: '#e6a28c',
-    hemiGround: '#3a2a3c',
-    hemiIntensity: 0.6,
-    zenith: '#22305e',
-    horizon: '#b98aa2',
-    horizonSun: '#ffa057',
-    sunGlow: '#ffc27a',
-    glowStrength: 1.1,
-    fog: '#c1909a',
-    water: '#13304a',
-    shallows: '#a28e9e',
-    envIntensity: 0.55,
-    exposure: 1,
-    bloom: 0.75,
+    sunElevation: 13,
+    sunAzimuth: -62,
+    sunColor: '#ffbf85',
+    sunIntensity: 2.8,
+    hemiSky: '#ff9e6d',
+    hemiGround: '#2a3b4c',
+    hemiIntensity: 1.2,
+    fillColor: '#ffc29a',
+    fillIntensity: 0.6,
+    zenith: '#8a6f86',
+    horizon: '#e9b898',
+    horizonSun: '#ffc58c',
+    sunGlow: '#ffd29a',
+    glowStrength: 0.7,
+    cloudLit: '#ffc89e',
+    cloudShade: '#a07887',
+    cloudCover: 0.42,
+    fog: '#e6b497',
+    water: '#0e3a52',
+    scatter: '#2f8c86',
+    shallows: '#f2ddc9',
+    lagoonGlow: 0.3,
+    ao: 1.6,
+    envIntensity: 0.85,
+    exposure: 1.0,
+    bloom: 0.6,
   },
 }
 
@@ -86,14 +117,22 @@ export const sampled = {
   hemiSky: new Color(),
   hemiGround: new Color(),
   hemiIntensity: 0,
+  fillColor: new Color(),
+  fillIntensity: 0,
   zenith: new Color(),
   horizon: new Color(),
   horizonSun: new Color(),
   sunGlow: new Color(),
   glowStrength: 0,
+  cloudLit: new Color(),
+  cloudShade: new Color(),
+  cloudCover: 0,
   fog: new Color(),
   water: new Color(),
+  scatter: new Color(),
   shallows: new Color(),
+  lagoonGlow: 0,
+  ao: 0,
   envIntensity: 1,
   exposure: 1,
   bloom: 0,
@@ -122,6 +161,14 @@ export function sampleAtmosphere() {
   mixColor(sampled.hemiGround, a.hemiGround, b.hemiGround, t)
   mixColor(sampled.fog, a.fog, b.fog, t)
   mixColor(sampled.water, a.water, b.water, t)
+  mixColor(sampled.scatter, a.scatter, b.scatter, t)
+  mixColor(sampled.cloudLit, a.cloudLit, b.cloudLit, t)
+  mixColor(sampled.cloudShade, a.cloudShade, b.cloudShade, t)
+  sampled.cloudCover = lerp(a.cloudCover, b.cloudCover)
+  sampled.ao = lerp(a.ao, b.ao)
+  mixColor(sampled.fillColor, a.fillColor, b.fillColor, t)
+  sampled.fillIntensity = lerp(a.fillIntensity, b.fillIntensity)
+  sampled.lagoonGlow = lerp(a.lagoonGlow, b.lagoonGlow)
   mixColor(sampled.shallows, a.shallows, b.shallows, t)
   sampled.sunIntensity = lerp(a.sunIntensity, b.sunIntensity)
   sampled.hemiIntensity = lerp(a.hemiIntensity, b.hemiIntensity)

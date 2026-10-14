@@ -55,13 +55,22 @@ export function mesaRadius(phi: number) {
 // ---------------------------------------------------------------------------
 
 let outline: Float32Array | null = null
+let beach = true
 
-/** Use a measured waterline (radius per equal angle step from -π) or `null` for the procedural mesa. */
-export function setIslandOutline(samples: Float32Array | null) {
+/**
+ * Use a measured waterline (radius per equal angle step from -π) or `null`
+ * for the procedural mesa. `withBeach` says whether the procedural beach /
+ * reef-flat terrain is shown around it (it shapes the seabed depth).
+ */
+export function setIslandOutline(samples: Float32Array | null, withBeach = true) {
   outline = samples
+  beach = withBeach
   dressing = null
   full = null
 }
+
+/** Whether the procedural beach terrain surrounds the current island. */
+export const islandHasBeach = () => beach
 
 /** Waterline radius of the current island at angle φ (= atan2(z, x)). */
 export function outlineRadius(phi: number) {
@@ -79,7 +88,7 @@ export function shoreDistance(x: number, z: number) {
 }
 
 /** A point `offset` units out from the east shore at a given Z (marches outward from the centre line). */
-function eastShorePoint(z: number, offset: number): [number, number] {
+export function eastShorePoint(z: number, offset: number): [number, number] {
   let x = 0
   while (x < 60 && shoreDistance(x, z) < 0) x += 0.1
   return [x + offset, z]
@@ -135,7 +144,8 @@ export function terrainHeight(x: number, z: number) {
   // sand spit leading into the slab tail
   const tail = tailDistance(x, z)
   const spit = (1 - smoothstep(1.2, 3.4, tail.d)) * (1 - smoothstep(0.12, 0.38, tail.along))
-  h = Math.max(h, 0.4 * spit - 0.4 * (1 - spit))
+  // (above water where spit > 0.5; sloping away underneath so it doesn't raise the whole reef flat)
+  h = Math.max(h, 0.8 * spit - 0.4 - 4 * Math.max(0, 0.5 - spit))
   h += fbm2(x * 0.4, z * 0.4, 2) * 0.08
   return h
 }
@@ -287,21 +297,28 @@ function buildMesa() {
 const SLAB_COLORS = ['#6e5440', '#7b604a', '#625040', '#856a52'].map((h) => new Color(h))
 const RUBBLE = new Color('#6f5a47')
 
+const SLAB_WET = new Color('#3b3128')
+
 function slab(x: number, z: number, length: number, width: number, height: number, yaw: number, rand: () => number) {
-  const g = new CylinderGeometry(1, 1, 1, 10, 1)
+  const SIDES = 28
+  const g = new CylinderGeometry(1, 1, 1, SIDES, 3)
   g.deleteAttribute('uv')
   const pos = g.attributes.position
-  const jitter = Array.from({ length: 10 }, () => 0.78 + rand() * 0.3)
+  const seed = rand() * 100
   const tiltX = (rand() - 0.5) * 0.08
   const tiltZ = (rand() - 0.5) * 0.08
   const v = new Vector3()
   for (let i = 0; i < pos.count; i++) {
     v.fromBufferAttribute(pos, i)
-    if (Math.hypot(v.x, v.z) > 0.01) {
-      const a = (Math.atan2(v.z, v.x) / (Math.PI * 2) + 1) % 1
-      const k = jitter[Math.round(a * 10) % 10]
-      v.x *= k
-      v.z *= k
+    const r = Math.hypot(v.x, v.z)
+    if (r > 0.01) {
+      // smooth, irregular outline with a couple of chipped corners
+      const a = Math.atan2(v.z, v.x)
+      const k = 0.86 + simplex.noise(Math.cos(a) * 1.1 + seed, Math.sin(a) * 1.1) * 0.16 + simplex.noise(Math.cos(a) * 3.2 - seed, Math.sin(a) * 3.2) * 0.05
+      // rounded, weathered top edge
+      const bevel = v.y > 0.49 ? 0.9 : v.y > 0.1 ? 0.975 : 1
+      v.x *= k * bevel
+      v.z *= k * bevel
     }
     v.x *= length / 2
     v.z *= width / 2
@@ -316,7 +333,13 @@ function slab(x: number, z: number, length: number, width: number, height: numbe
   const colors = new Float32Array(pos.count * 3)
   const cc = new Color()
   for (let i = 0; i < pos.count; i++) {
-    cc.copy(col).offsetHSL(0, 0, nrm.getY(i) > 0.7 ? 0.06 : -0.06)
+    const wx = pos.getX(i)
+    const wy = pos.getY(i)
+    const wz = pos.getZ(i)
+    cc.copy(col).offsetHSL(0, 0, nrm.getY(i) > 0.7 ? 0.05 : -0.05)
+    // weathering blotches, and a dark wet band where the sea laps the stone
+    cc.offsetHSL(0, -0.02, simplex.noise(wx * 0.9 + seed, wz * 0.9) * 0.05)
+    cc.lerp(SLAB_WET, (1 - smoothstep(-0.05, 0.22, wy)) * 0.75)
     colors.set([cc.r, cc.g, cc.b], i * 3)
   }
   g.setAttribute('color', new Float32BufferAttribute(colors, 3))
@@ -427,16 +450,6 @@ function coloured(g: BufferGeometry, hex: string) {
 
 function buildProps() {
   const parts: BufferGeometry[] = []
-  // Nine white block letters facing east (+X).
-  const [sx, sz] = eastShorePoint(0.5, 2.4)
-  const y0 = terrainHeight(sx, sz)
-  const widths = [0.5, 0.5, 0.2, 0.62, 0.5, 0.42, 0.5, 0.36, 0.5] // A N I M A S O L A
-  const total = widths.reduce((a, w) => a + w + 0.1, -0.1)
-  let cursor = -total / 2
-  for (const w of widths) {
-    parts.push(coloured(new BoxGeometry(0.16, 0.85, w).translate(sx, y0 + 0.42, sz + cursor + w / 2), '#f4f1ea'))
-    cursor += w + 0.1
-  }
   // Small white kiosk.
   const [kx, kz] = eastShorePoint(4, 2.2)
   parts.push(coloured(new BoxGeometry(0.8, 1.4, 0.8).translate(kx, terrainHeight(kx, kz) + 0.7, kz), '#e9e6df'))
