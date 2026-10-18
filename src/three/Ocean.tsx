@@ -64,6 +64,17 @@ export function Ocean() {
       shallowTint: { value: new Color(1, 1, 1) },
       lagoonGlow: { value: 0 },
     })
+    // Water.js reflects mirrorCamera.up, which flips mirrorCamera's local +X axis.
+    // When CameraRig uses camera.setViewOffset (asymmetric horizontal frustum, elements[8] != 0),
+    // negate elements[8] while Water builds mirrorCamera so the reflection frustum matches the view.
+    const origBeforeRender = w.onBeforeRender.bind(w)
+    w.onBeforeRender = (renderer, scene, camera, geometry, material, group) => {
+      const proj = camera.projectionMatrix.elements
+      const m20 = proj[8]
+      proj[8] = -m20
+      origBeforeRender(renderer, scene, camera, geometry, material, group)
+      proj[8] = m20
+    }
     return w
     // `normals` and `seabed` are swapped in place below; only quality should rebuild the reflector.
   }, [quality])
@@ -119,18 +130,18 @@ function createSeabedTexture() {
       // row 0 = the -Z (north) edge, i.e. v = 0
       const x = centre[0] - S / 2 + ((px + 0.5) / n) * S
       const z = centre[1] - S / 2 + ((py + 0.5) / n) * S
-      const wobble = reefNoise(x * 0.06, z * 0.06) * 0.35
-      const island = 1 - smoothstep(1, 13 + wobble * 8, shoreDistance(x, z))
-      const tail = tailDistance(x, z)
-      const spine = tail.along < 1 ? (1 - smoothstep(1.5, 8.5 + wobble * 6, tail.d)) * (1 - smoothstep(0.85, 1, tail.along)) : 0
-      const reef = Math.max(island, spine)
+      const wobble = reefNoise(x * 0.055, z * 0.055) * 0.42
       const sd = shoreDistance(x, z)
+      const island = 1 - smoothstep(0.5, 16.5 + wobble * 9.5, sd)
+      const tail = tailDistance(x, z)
+      const spine = tail.along < 1 ? (1 - smoothstep(1.2, 10.5 + wobble * 6.5, tail.d)) * (1 - smoothstep(0.82, 1, tail.along)) : 0
+      const reef = Math.max(island, spine)
       // With the beach dressing the bed follows its terrain; around a bare model
       // it shelves gently from the waterline to the reef flat.
       const shelf = beach ? Math.max(0, -terrainHeight(x, z)) : sd <= 0 ? 0 : Math.min(3.2, 0.12 + sd * 0.32 + reefNoise(x * 0.3, z * 0.3) * 0.25)
-      const depth = Math.min(40, shelf + 34 * Math.pow(1 - reef, 1.6))
+      const depth = Math.min(40, shelf * 0.82 + 34 * Math.pow(1 - reef, 2.05))
       const m = reefNoise(x * 0.22 + 11, z * 0.22)
-      const patch = smoothstep(0.1, 0.45, m) * smoothstep(0.15, 0.6, reef) * (1 - smoothstep(0.85, 1, reef))
+      const patch = smoothstep(0.08, 0.44, m) * smoothstep(0.12, 0.58, reef) * (1 - smoothstep(0.84, 1, reef))
       const i = (py * n + px) * 4
       data[i] = Math.sqrt(depth / 40) * 255
       data[i + 1] = patch * 255

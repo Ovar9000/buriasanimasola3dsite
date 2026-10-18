@@ -130,56 +130,58 @@ void main() {
   // world-space size of one pixel here (approx.), grows at grazing angles
   float footprint = max(length(fwidth(p)), 1e-4);
 
-  vec2 slope = swellSlope(p, footprint) + rippleSlope(p, footprint);
+  vec4 bed = sampleSeabed(p);
+  // Sheltered reef shallows damp out open-ocean swells toward the beach
+  float calm = smoothstep(0.0, 2.6, bed.x);
+  vec2 slope = swellSlope(p, footprint) * mix(0.22, 1.0, calm) + rippleSlope(p, footprint) * mix(0.42, 1.0, calm);
   vec3 N = normalize(vec3(-slope.x, 1.0, -slope.y));
 
   vec3 L = normalize(sunDirection);
   float shadow = getShadowMask();
   float NdV = max(dot(N, V), 0.0);
 
-  // ---- reflection
-  vec2 distortion = N.xz * (0.002 + 1.0 / (dist + 8.0)) * distortionScale;
-  vec3 reflection = texture2D(mirrorSampler, mirrorCoord.xy / mirrorCoord.w + distortion).rgb;
-  float fresnel = 0.02 + 0.98 * pow(1.0 - NdV, 5.0);
-
   // ---- water body: look through the surface at the seabed
-  vec4 bed = sampleSeabed(p);
   // refraction parallax: the bottom we see is offset along the view ray
-  vec2 refr = (-V.xz / max(V.y, 0.25)) * bed.x * 0.55 + N.xz * bed.x * 0.35;
+  vec2 refr = (-V.xz / max(V.y, 0.25)) * min(bed.x, 8.0) * 0.48 + N.xz * min(bed.x, 6.0) * 0.32;
   vec4 bedSeen = sampleSeabed(p + refr);
   float depth = mix(bed.x, bedSeen.x, 0.7);
 
-  vec3 sand = vec3(0.74, 0.70, 0.58);
-  vec3 coral = vec3(0.30, 0.28, 0.24);
-  vec3 weed = vec3(0.24, 0.30, 0.18);
-  vec3 albedo = mix(sand, mix(coral, weed, bedSeen.b), bedSeen.g * 0.75) * (0.82 + 0.36 * bedSeen.a);
+  // ---- reflection (physically proportioned UV perturbation so close-up cliff reflections don't shred)
+  vec2 projUv = mirrorCoord.xy / mirrorCoord.w;
+  vec2 distortion = N.xz * (0.0025 + 0.14 / (dist + 22.0)) * distortionScale * mix(0.25, 1.0, calm);
+  vec3 reflection = texture2D(mirrorSampler, clamp(projUv + distortion, 0.002, 0.998)).rgb;
+  float fresnel = (0.02 + 0.98 * pow(1.0 - NdV, 5.0)) * smoothstep(0.02, 0.28, depth);
+
+  vec3 sand = vec3(0.78, 0.73, 0.61);
+  vec3 coral = vec3(0.28, 0.27, 0.22);
+  vec3 weed = vec3(0.21, 0.28, 0.17);
+  vec3 albedo = mix(sand, mix(coral, weed, bedSeen.b), bedSeen.g * 0.78) * (0.84 + 0.34 * bedSeen.a);
 
   float sunUp = max(L.y, 0.0);
   float caust = 0.0;
   #ifdef OCEAN_CAUSTICS
-    if (depth < 6.0) {
+    if (depth < 7.0) {
       vec2 cp = (p + refr) * 0.42 + N.xz * 0.6;
-      caust = caustics(cp) * (1.0 - smoothstep(0.3, 6.0, depth)) * smoothstep(0.02, 0.25, sunUp);
+      caust = caustics(cp) * (1.0 - smoothstep(0.3, 7.0, depth)) * smoothstep(0.02, 0.25, sunUp);
     }
   #endif
   vec3 sunLight = sunColor * sunIntensity * sunUp * shadow;
-  vec3 bottomLight = (sunLight * (0.8 + caust * 1.6) + ambient) * RECIPROCAL_PI;
+  vec3 bottomLight = (sunLight * (0.82 + caust * 1.55) + ambient) * RECIPROCAL_PI;
   vec3 bottom = albedo * bottomLight * shallowTint;
 
   // light travels down to the bed and back up to the eye
-  float path = depth * (1.0 + 1.0 / max(V.y, 0.2));
-  vec3 absorption = vec3(0.46, 0.085, 0.05);
+  float path = depth * (1.0 + 1.0 / max(V.y, 0.22));
+  vec3 absorption = vec3(0.44, 0.082, 0.048);
   vec3 transmit = exp(-absorption * path);
 
-  // deep-water colour, with a little sunlit scattering through wave flanks
+  // deep-water colour, with sunlit subsurface scattering through wave flanks
   float sss = pow(max(dot(V, -vec3(L.x, 0.0, L.z)), 0.0), 3.0) * max(slope.x * L.x + slope.y * L.z, 0.0) * 3.0;
   vec3 deep = waterColor * (0.85 + 0.15 * shadow) + scatterColor * sss * sunUp * mix(0.4, 1.0, shadow);
   vec3 body = mix(deep, bottom, transmit);
-  // turquoise / emerald light scattered back up out of the shallows; kept
-  // independent of the sun so the reef still reads at sunset
-  float shallow = 1.0 - smoothstep(0.4, 9.0, depth);
-  vec3 lagoon = mix(vec3(0.02, 0.55, 0.42), vec3(0.05, 0.75, 0.68), smoothstep(0.0, 2.5, depth));
-  body += lagoon * shallow * lagoonGlow * (0.6 + 0.4 * bedSeen.a);
+  // turquoise / emerald light scattered back up out of the shallows
+  float shallow = smoothstep(0.05, 0.35, depth) * (1.0 - smoothstep(1.8, 12.5, depth));
+  vec3 lagoon = mix(vec3(0.03, 0.54, 0.44), vec3(0.04, 0.72, 0.66), smoothstep(0.0, 2.8, depth));
+  body += lagoon * shallow * lagoonGlow * (0.55 + 0.45 * bedSeen.a) * (0.45 + 0.55 * shadow);
 
   vec3 color = mix(body, reflection, fresnel);
 
@@ -189,12 +191,12 @@ void main() {
   float glint = pow(NdH, 1400.0) * 90.0 + pow(NdH, 180.0) * 0.7;
   color += sunColor * sunIntensity * glint * fresnel * shadow * smoothstep(-0.02, 0.08, L.y);
 
-  // ---- shore foam
+  // ---- shore foam & gentle surf wash
   float n = vnoise(p * 1.6 + vec2(time * 0.35, -time * 0.21)) * 0.6 + vnoise(p * 4.3 - time * 0.4) * 0.4;
-  float edge = 1.0 - smoothstep(0.0, 0.08 + n * 0.16, depth);
-  float bands = smoothstep(0.7, 0.98, sin(depth * 16.0 + time * 1.3 + n * 4.0)) * (1.0 - smoothstep(0.05, 0.45, depth));
-  float foam = clamp(edge * (0.45 + 0.6 * n) + bands * smoothstep(0.4, 0.8, n) * 0.7, 0.0, 1.0);
-  vec3 foamColor = vec3(0.92) * (sunLight + ambient) * RECIPROCAL_PI * 1.15;
+  float edge = 1.0 - smoothstep(0.0, 0.07 + n * 0.14, depth);
+  float bands = smoothstep(0.72, 0.98, sin(depth * 15.0 + time * 1.3 + n * 4.0)) * (1.0 - smoothstep(0.04, 0.42, depth));
+  float foam = clamp(edge * (0.42 + 0.55 * n) + bands * smoothstep(0.42, 0.82, n) * 0.65, 0.0, 1.0);
+  vec3 foamColor = vec3(0.93) * (sunLight + ambient) * RECIPROCAL_PI * 1.12;
   color = mix(color, foamColor, foam);
 
   gl_FragColor = vec4(color, 1.0);
