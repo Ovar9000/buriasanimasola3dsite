@@ -7,7 +7,7 @@ import { ASSETS } from '../config/assets'
 import { ISLAND } from '../config/scene'
 import { AssetBoundary } from './AssetBoundary'
 import { eastShorePoint, getIslandDressing, getProceduralIsland, setIslandOutline, terrainHeight } from './proceduralIsland'
-import { applyRockDetail } from './rockDetail'
+import { applyBeachDetail, applyRockDetail } from './rockDetail'
 import { buildSignGeometry } from './signLetters'
 
 interface IslandProps {
@@ -51,6 +51,7 @@ function IslandModel({ onReady }: IslandProps) {
     const size = box.getSize(new Vector3())
     const centre = box.getCenter(new Vector3())
     const s = ISLAND.targetSize / Math.max(size.x, size.z, 1e-6)
+    const sy = s * ISLAND.verticalScale
     const waterline = box.min.y + size.y * ISLAND.submergedFraction
     let triangles = 0
     scene.traverse((o) => {
@@ -62,16 +63,17 @@ function IslandModel({ onReady }: IslandProps) {
         gradeMaterial(m.material as MeshStandardMaterial)
       }
     })
-    const position = new Vector3(-centre.x * s, -waterline * s, -centre.z * s)
-    const toWorld = new Matrix4().makeTranslation(position).scale(new Vector3(s, s, s))
+    const position = new Vector3(-centre.x * s, -waterline * sy, -centre.z * s)
+    const scale = new Vector3(s, sy, s)
+    const toWorld = new Matrix4().makeTranslation(position).scale(scale)
     // Shape the reef (and the optional beach dressing) around this model.
     setIslandOutline(measureWaterline(scene, toWorld), ISLAND.dressing)
     const sign = ISLAND.dressing ? dressingSignSpot() : modelSignSpot(scene, toWorld)
     console.info(
       `[assets] models/animasola-island.glb loaded: ${Math.round(triangles).toLocaleString()} triangles, ` +
-        `fitted to ${(size.x * s).toFixed(1)} × ${(size.y * s).toFixed(1)} × ${(size.z * s).toFixed(1)} world units.`,
+        `fitted to ${(size.x * s).toFixed(1)} × ${(size.y * sy).toFixed(1)} × ${(size.z * s).toFixed(1)} world units.`,
     )
-    return { scale: s, position, sign }
+    return { scale: [s, sy, s] as [number, number, number], position, sign }
   }, [scene])
 
   const bumpOutline = useExplorerStore((st) => st.bumpOutline)
@@ -104,7 +106,7 @@ function gradeMaterial(mat: MeshStandardMaterial) {
   graded.add(mat)
   mat.metalness = 0
   mat.color.multiply(new Color(ISLAND.tint))
-  mat.envMapIntensity = 1.1
+  mat.envMapIntensity = 1.05
   applyRockDetail(mat, { grassLine: ISLAND.grassLine })
 }
 
@@ -113,11 +115,11 @@ function IslandSign({ position }: { position: Vector3 }) {
   const geometry = useMemo(() => buildSignGeometry(), [])
   useEffect(() => () => geometry.dispose(), [geometry])
   return (
-    <group position={position}>
-      {/* Concrete beach foundation slab */}
-      <mesh position={[0, 0.05, 0]} rotation-y={Math.PI / 2} receiveShadow castShadow userData={{ noSnap: true }}>
-        <boxGeometry args={[7.2, 0.1, 0.55]} />
-        <meshStandardMaterial color="#c2b8ad" roughness={0.88} metalness={0} />
+    <group position={position} rotation-y={-0.09}>
+      {/* Deep concrete beach foundation plinth embedded flush into the sloping sand */}
+      <mesh position={[0, -0.16, 0]} rotation-y={Math.PI / 2} receiveShadow castShadow userData={{ noSnap: true }}>
+        <boxGeometry args={[7.4, 0.52, 0.62]} />
+        <meshStandardMaterial color="#bfb4a4" roughness={0.9} metalness={0} />
       </mesh>
       <mesh
         name="animasola-sign"
@@ -128,7 +130,7 @@ function IslandSign({ position }: { position: Vector3 }) {
         receiveShadow
         userData={{ noSnap: true }}
       >
-        <meshStandardMaterial color="#ffffff" roughness={0.32} metalness={0.02} envMapIntensity={1.3} />
+        <meshStandardMaterial color="#f6f4ef" roughness={0.56} metalness={0} envMapIntensity={0.85} />
       </mesh>
     </group>
   )
@@ -139,7 +141,7 @@ const SIGN_Z = 0.5
 
 /** On the procedural beach, a couple of metres up from the water. */
 function dressingSignSpot() {
-  const [x, z] = eastShorePoint(SIGN_Z, 2.4)
+  const [x, z] = eastShorePoint(SIGN_Z, 1.55)
   return new Vector3(x, terrainHeight(x, z) - 0.05, z)
 }
 
@@ -185,13 +187,13 @@ function IslandDressing() {
   return (
     <>
       <mesh geometry={geo.terrain} receiveShadow>
-        <meshStandardMaterial vertexColors roughness={0.92} metalness={0} envMapIntensity={0.6} />
+        <meshStandardMaterial ref={beachDetailed} vertexColors roughness={0.9} metalness={0} envMapIntensity={0.65} />
       </mesh>
       <mesh geometry={geo.slabs} castShadow receiveShadow>
-        <meshStandardMaterial vertexColors roughness={0.76} metalness={0} envMapIntensity={0.8} />
+        <meshStandardMaterial ref={slabDetailed} vertexColors roughness={0.82} metalness={0} envMapIntensity={0.85} />
       </mesh>
       <mesh geometry={geo.props} castShadow receiveShadow userData={{ noSnap: true }}>
-        <meshStandardMaterial vertexColors roughness={0.65} metalness={0} />
+        <meshStandardMaterial vertexColors roughness={0.84} metalness={0} envMapIntensity={0.55} />
       </mesh>
     </>
   )
@@ -199,7 +201,7 @@ function IslandDressing() {
 
 /**
  * Waterline outline of a model in world space: the furthest vertex within a
- * metre of sea level, per angular bin, gap-filled and smoothed.
+ * metre of sea level, per angular bin, gap-filled and multi-pass smoothed.
  */
 function measureWaterline(scene: Object3D, fit: Matrix4, bins = 180) {
   const radius = new Float32Array(bins)
@@ -212,31 +214,34 @@ function measureWaterline(scene: Object3D, fit: Matrix4, bins = 180) {
     const pos = mesh.geometry.attributes.position
     for (let i = 0; i < pos.count; i++) {
       v.fromBufferAttribute(pos, i).applyMatrix4(m)
-      if (v.y > 1) continue
+      if (v.y > 1.1) continue
       const b = Math.floor(((Math.atan2(v.z, v.x) + Math.PI) / (Math.PI * 2)) * bins) % bins
       radius[b] = Math.max(radius[b], Math.hypot(v.x, v.z))
     }
   })
   // fill empty bins from their nearest filled neighbours
-  const filled = radius.slice()
+  let cur = radius.slice()
   for (let b = 0; b < bins; b++) {
-    if (filled[b] > 0) continue
+    if (cur[b] > 0) continue
     for (let d = 1; d < bins / 2; d++) {
       const r = Math.max(radius[(b + d) % bins], radius[(b - d + bins) % bins])
       if (r > 0) {
-        filled[b] = r
+        cur[b] = r
         break
       }
     }
   }
-  // circular smoothing so the shore doesn't zig-zag
-  const out = new Float32Array(bins)
-  for (let b = 0; b < bins; b++) {
-    let sum = 0
-    for (let d = -2; d <= 2; d++) sum += filled[(b + d + bins) % bins]
-    out[b] = sum / 5
+  // 3-pass circular smoothing so the beach wraps organically without sharp radial creases
+  for (let pass = 0; pass < 3; pass++) {
+    const next = new Float32Array(bins)
+    for (let b = 0; b < bins; b++) {
+      let sum = 0
+      for (let d = -4; d <= 4; d++) sum += cur[(b + d + bins) % bins]
+      next[b] = sum / 9
+    }
+    cur = next
   }
-  return out
+  return cur
 }
 
 function ProceduralIsland({ onReady }: IslandProps) {
@@ -260,7 +265,7 @@ function ProceduralIsland({ onReady }: IslandProps) {
         <meshStandardMaterial ref={detailed} vertexColors roughness={0.92} metalness={0} envMapIntensity={0.8} />
       </mesh>
       <mesh geometry={geo.rubble} castShadow receiveShadow>
-        <meshStandardMaterial vertexColors roughness={0.85} metalness={0} envMapIntensity={0.8} />
+        <meshStandardMaterial ref={slabDetailed} vertexColors roughness={0.85} metalness={0} envMapIntensity={0.8} />
       </mesh>
       <IslandDressing />
       <IslandSign position={sign} />
@@ -271,4 +276,14 @@ function ProceduralIsland({ onReady }: IslandProps) {
 /** Ref callback adding the triplanar rock detail to the procedural mesa. */
 const detailed = (m: MeshStandardMaterial | null) => {
   if (m) applyRockDetail(m, { grassLine: ISLAND.grassLine })
+}
+
+/** Ref callback adding rock strata, micro-cracks & tidal wet sheen to shore slabs. */
+const slabDetailed = (m: MeshStandardMaterial | null) => {
+  if (m) applyRockDetail(m, { grassLine: 99, layer: 0.14, strength: 0.82 })
+}
+
+/** Ref callback adding coral sand grain & wet shoreline sheen to the beach terrain. */
+const beachDetailed = (m: MeshStandardMaterial | null) => {
+  if (m) applyBeachDetail(m)
 }

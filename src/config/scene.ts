@@ -9,6 +9,11 @@ export const ISLAND = {
   /** Largest horizontal extent the GLB is scaled to (world units). */
   targetSize: 32,
   /**
+   * Vertical relief multiplier applied to the GLB so its cliffs match the
+   * dramatic height-to-length proportions of real Animasola Island.
+   */
+  verticalScale: 1.55,
+  /**
    * Extra rotation applied to the GLB (radians) so it runs north–south with its
    * terraced end toward the southern slab tail and the sign beach facing +X.
    */
@@ -20,14 +25,13 @@ export const ISLAND = {
   submergedFraction: 0.04,
   /**
    * Also surround the GLB with the procedural beach, slab tail and kiosk /
-   * canopy props. Off by default: the model is shown on its own, with only the
-   * reef shallows and the ANIMASOLA sign added around it.
+   * canopy props.
    */
   dressing: true,
-  /** World height splitting the detail shader's grass (above) from sand (below). */
-  grassLine: 2.5,
+  /** World height splitting the detail shader's grass (above) from rock/sand (below). */
+  grassLine: 4.2,
   /** Multiplied into the model's albedo to warm up the rock (white = as exported). */
-  tint: '#ffe0c0',
+  tint: '#ffdfb8',
 } as const
 
 export const OCEAN = {
