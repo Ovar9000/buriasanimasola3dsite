@@ -155,10 +155,10 @@ export function terrainHeight(x: number, z: number) {
   return h
 }
 
-const SAND = new Color('#cbbba0')
-const PEBBLE = new Color('#a89b86')
-const SAND_WET = new Color('#8c7b64')
-const SEABED = new Color('#7aa497')
+const SAND = new Color('#e8dcc4')
+const PEBBLE = new Color('#cab99e')
+const SAND_WET = new Color('#9e8a6f')
+const SEABED = new Color('#74b2a5')
 
 function buildTerrain() {
   const size = 110
@@ -299,38 +299,41 @@ function buildMesa() {
 // Flat rock slabs (the tail) + rubble at the cliff foot
 // ---------------------------------------------------------------------------
 
-const SLAB_COLORS = ['#c4a880', '#b89a72', '#d2b68c', '#ab8e66', '#d9c49e'].map((h) => new Color(h))
+const SLAB_COLORS = ['#c4a47a', '#b8966c', '#c8ae86', '#ab8b62', '#d2b68c'].map((h) => new Color(h))
 const RUBBLE = new Color('#a88b68')
 
-const SLAB_WET = new Color('#5a4836')
+const SLAB_WET = new Color('#524130')
 
-function slab(x: number, z: number, length: number, width: number, height: number, yaw: number, rand: () => number) {
-  const SIDES = 28
-  const g = new CylinderGeometry(1, 1, 1, SIDES, 3)
+function slab(x: number, z: number, length: number, width: number, height: number, yaw: number, rand: () => number, yOffset = 0) {
+  const SIDES = 32
+  const g = new CylinderGeometry(1, 1, 1, SIDES, 4)
   g.deleteAttribute('uv')
   const pos = g.attributes.position
   const seed = rand() * 100
-  const tiltX = (rand() - 0.5) * 0.08
-  const tiltZ = (rand() - 0.5) * 0.08
+  const tiltX = (rand() - 0.5) * 0.06
+  const tiltZ = (rand() - 0.5) * 0.06
   const v = new Vector3()
   for (let i = 0; i < pos.count; i++) {
     v.fromBufferAttribute(pos, i)
     const r = Math.hypot(v.x, v.z)
     if (r > 0.01) {
-      // smooth, irregular outline with a couple of chipped corners
+      // Angular fractured limestone outline with stepped wave-cut ledges
       const a = Math.atan2(v.z, v.x)
-      const k = 0.86 + simplex.noise(Math.cos(a) * 1.1 + seed, Math.sin(a) * 1.1) * 0.16 + simplex.noise(Math.cos(a) * 3.2 - seed, Math.sin(a) * 3.2) * 0.05
-      // rounded, weathered top edge
-      const bevel = v.y > 0.49 ? 0.9 : v.y > 0.1 ? 0.975 : 1
-      v.x *= k * bevel
-      v.z *= k * bevel
+      const k =
+        0.84 +
+        simplex.noise(Math.cos(a) * 1.2 + seed, Math.sin(a) * 1.2) * 0.18 +
+        simplex.noise(Math.cos(a) * 3.4 - seed, Math.sin(a) * 3.4) * 0.07 +
+        simplex.noise(Math.cos(a) * 7.1 + seed, Math.sin(a) * 7.1) * 0.025
+      const step = v.y > 0.48 ? 0.91 : v.y > 0.15 ? 0.96 : v.y < -0.15 ? 1.04 : 1
+      v.x *= k * step
+      v.z *= k * step
     }
     v.x *= length / 2
     v.z *= width / 2
     v.y = (v.y + 0.5) * height + v.x * tiltX + v.z * tiltZ
     const rx = v.x * Math.cos(yaw) - v.z * Math.sin(yaw)
     const rz = v.x * Math.sin(yaw) + v.z * Math.cos(yaw)
-    pos.setXYZ(i, x + rx, v.y - height * 0.55, z + rz)
+    pos.setXYZ(i, x + rx, v.y - height * 0.62 + yOffset, z + rz)
   }
   g.computeVertexNormals()
   const col = SLAB_COLORS[Math.floor(rand() * SLAB_COLORS.length)]
@@ -341,10 +344,9 @@ function slab(x: number, z: number, length: number, width: number, height: numbe
     const wx = pos.getX(i)
     const wy = pos.getY(i)
     const wz = pos.getZ(i)
-    cc.copy(col).offsetHSL(0, 0, nrm.getY(i) > 0.7 ? 0.05 : -0.05)
-    // weathering blotches, and a dark wet band where the sea laps the stone
+    cc.copy(col).offsetHSL(0, 0, nrm.getY(i) > 0.7 ? 0.03 : -0.05)
     cc.offsetHSL(0, -0.02, simplex.noise(wx * 0.9 + seed, wz * 0.9) * 0.05)
-    cc.lerp(SLAB_WET, (1 - smoothstep(-0.05, 0.22, wy)) * 0.75)
+    cc.lerp(SLAB_WET, (1 - smoothstep(-0.04, 0.24, wy)) * 0.8)
     colors.set([cc.r, cc.g, cc.b], i * 3)
   }
   g.setAttribute('color', new Float32BufferAttribute(colors, 3))
@@ -381,12 +383,12 @@ function mergeParts(parts: BufferGeometry[]) {
   return merged
 }
 
-/** Flat slabs: the southern tail, the cracked tile field and reef scatter. */
+/** Flat slabs: the southern tail, coastal rock shelves and reef scatter. */
 function buildSlabs() {
   const rand = mulberry32(SEED + 7)
   const parts: BufferGeometry[] = []
 
-  // Tail of slabs: big near the island, smaller and sparser out on the reef.
+  // Tail of slabs (Mermaid's Lair): broad fractured rock shelves with clear tidal channels between them.
   for (let i = 0; i < 46; i++) {
     const t = Math.pow(i / 45, 0.9)
     const seg = Math.min(TAIL.length - 2, Math.floor(t * (TAIL.length - 1)))
@@ -399,28 +401,33 @@ function buildSlabs() {
     const off = (rand() - 0.5) * 2 * (1.6 + t * 3)
     const x = ax + dirx * lt - (dirz / len) * off
     const z = az + dirz * lt + (dirx / len) * off
-    const size = (1 - t * 0.55) * (1.6 + rand() * 2.4)
+    const size = (1 - t * 0.52) * (1.65 + rand() * 2.35)
     if (t < 0.12 && rand() < 0.5) continue // keep the spit sandy
-    const yaw = Math.atan2(dirz, dirx) + (rand() - 0.5) * 1.2
-    parts.push(slab(x, z, size * (1.2 + rand() * 0.6), size * (0.7 + rand() * 0.4), 0.55 + rand() * 0.7, yaw, rand))
+    const yaw = Math.atan2(dirz, dirx) + (rand() - 0.5) * 1.1
+    const h = 0.45 + (1 - t * 0.4) * (0.2 + rand() * 0.45)
+    parts.push(slab(x, z, size * (1.25 + rand() * 0.55), size * (0.72 + rand() * 0.4), h, yaw, rand, -t * 0.08))
   }
 
-  // Cracked tile field just off the south-east beach.
-  for (let gx = 0; gx < 5; gx++) {
-    for (let gz = 0; gz < 4; gz++) {
-      if (rand() < 0.2) continue
-      const z = 11.5 + gz * 1.1 + (rand() - 0.5) * 0.3
-      const x = eastShorePoint(z, 0.4)[0] + gx * 1.25 + (rand() - 0.5) * 0.3
-      parts.push(slab(x, z, 1.05 + rand() * 0.3, 0.9 + rand() * 0.3, 0.5 + rand() * 0.3, 0.35 + (rand() - 0.5) * 0.2, rand))
-    }
+  // Natural low wave-cut rock shelves emerging through the sand at the south-east corner (replaces artificial 5x4 puck grid).
+  const shelves: [number, number, number, number, number][] = [
+    [eastShorePoint(11.6, 1.1)[0], 11.6, 2.8, 1.7, 0.35],
+    [eastShorePoint(13.2, 1.8)[0], 13.2, 2.4, 1.5, 0.22],
+    [eastShorePoint(14.5, 1.2)[0], 14.5, 2.1, 1.4, 0.48],
+    [eastShorePoint(12.4, 3.3)[0], 12.4, 1.8, 1.2, 0.15],
+  ]
+  for (const [sx, sz, sl, sw, syaw] of shelves) {
+    const th = Math.max(-0.15, terrainHeight(sx, sz))
+    parts.push(slab(sx, sz, sl, sw, 0.38 + rand() * 0.18, syaw, rand, th * 0.5))
   }
 
-  // Scattered slabs on the reef flat.
+  // Low tidal reef rocks around the perimeter, sitting naturally in the shallows.
   const scatter: [number, number][] = [
-    [-13.5, -8], [-14.5, -2], [-13, 6], [-11.5, 11], [-8, -15], [-3, -18.5], [4, -18], [12.5, -9], [13.5, 12], [9, 17],
+    [-11.5, -7], [-12.2, -1.5], [-11.2, 5.5], [-10.2, 10.5], [-6.5, -14.5], [3.5, -16.8], [10.8, -8.5], [11.5, 11.5],
   ]
   for (const [x, z] of scatter) {
-    parts.push(slab(x + (rand() - 0.5) * 2, z + (rand() - 0.5) * 2, 1.5 + rand() * 2, 1 + rand() * 1.2, 0.5 + rand() * 0.5, rand() * Math.PI, rand))
+    const sx = x + (rand() - 0.5) * 1.5
+    const sz = z + (rand() - 0.5) * 1.5
+    parts.push(slab(sx, sz, 1.6 + rand() * 1.8, 1.1 + rand() * 1.1, 0.38 + rand() * 0.32, rand() * Math.PI, rand, -0.08))
   }
 
   return mergeParts(parts)
@@ -440,45 +447,82 @@ function buildRubble() {
 }
 
 // ---------------------------------------------------------------------------
-// East-front props: the ANIMASOLA letters, a kiosk and a red canopy
+// East-front props: authentic Philippine coastal nipa beach cottage
 // ---------------------------------------------------------------------------
 
-function coloured(g: BufferGeometry, hex: string) {
+function coloured(g: BufferGeometry, hex: string, shadeTop = 0.04) {
   g.deleteAttribute('uv')
   const n = g.index ? g.toNonIndexed() : g
+  n.computeVertexNormals()
   const c = new Color(hex)
-  const colors = new Float32Array(n.attributes.position.count * 3)
-  for (let i = 0; i < n.attributes.position.count; i++) colors.set([c.r, c.g, c.b], i * 3)
+  const cc = new Color()
+  const pos = n.attributes.position
+  const nrm = n.attributes.normal
+  const colors = new Float32Array(pos.count * 3)
+  for (let i = 0; i < pos.count; i++) {
+    const ny = nrm.getY(i)
+    const noise = simplex.noise(pos.getX(i) * 4.2, pos.getZ(i) * 4.2) * 0.03
+    cc.copy(c).offsetHSL(0, 0, ny * shadeTop + noise)
+    colors.set([cc.r, cc.g, cc.b], i * 3)
+  }
   n.setAttribute('color', new Float32BufferAttribute(colors, 3))
   return n
 }
 
 function buildProps() {
   const parts: BufferGeometry[] = []
-  // Authentic Philippine coastal nipa hut / thatched beach cottage (as seen in photo 2)
-  const [tx, tz] = eastShorePoint(6.5, 2.6)
+  // Authentic Philippine coastal nipa hut / thatched beach cottage
+  const [tx, tz] = eastShorePoint(6.5, 2.55)
   const ty = terrainHeight(tx, tz)
 
-  const postColor = '#947a57'
-  const hw = 0.85
-  const hd = 0.65
-  // Bamboo corner stilts
+  const postColor = '#8a6f4d'
+  const bambooLight = '#b89968'
+  const thatchBase = '#6e5536'
+  const thatchMid = '#7d6240'
+  const thatchTop = '#8b6e49'
+  const hw = 0.88
+  const hd = 0.68
+
+  // 4 main bamboo corner posts sunk firmly into the beach sand
   for (const [dx, dz] of [[-hw, -hd], [hw, -hd], [-hw, hd], [hw, hd]]) {
-    parts.push(coloured(new CylinderGeometry(0.045, 0.045, 1.55, 6).translate(tx + dx, ty + 0.775, tz + dz), postColor))
+    parts.push(coloured(new CylinderGeometry(0.05, 0.055, 1.85, 8).translate(tx + dx, ty + 0.68, tz + dz), postColor))
+    // Footing stone / bamboo collar
+    parts.push(coloured(new CylinderGeometry(0.075, 0.085, 0.22, 8).translate(tx + dx, ty + 0.02, tz + dz), '#6d6256'))
   }
-  // Low bamboo deck / bench platform
-  parts.push(coloured(new BoxGeometry(hw * 2 + 0.15, 0.08, hd * 2 + 0.15).translate(tx, ty + 0.42, tz), '#b5976b'))
-  // Wooden roof rafters
-  parts.push(coloured(new BoxGeometry(hw * 2 + 0.2, 0.06, 0.06).translate(tx, ty + 1.5, tz - hd), postColor))
-  parts.push(coloured(new BoxGeometry(hw * 2 + 0.2, 0.06, 0.06).translate(tx, ty + 1.5, tz + hd), postColor))
-  parts.push(coloured(new BoxGeometry(0.06, 0.06, hd * 2 + 0.2).translate(tx - hw, ty + 1.5, tz), postColor))
-  parts.push(coloured(new BoxGeometry(0.06, 0.06, hd * 2 + 0.2).translate(tx + hw, ty + 1.5, tz), postColor))
-  // Traditional thatched cogon / nipa roof with steep gable and eaves
-  const roof = new ConeGeometry(1.5, 0.85, 4)
-  roof.rotateY(Math.PI / 4)
-  roof.scale(1.25, 1.0, 0.95)
-  roof.translate(tx, ty + 1.95, tz)
-  parts.push(coloured(roof, '#7c6242'))
+  // Slatted bamboo bench deck + perimeter frame
+  parts.push(coloured(new BoxGeometry(hw * 2 + 0.16, 0.07, hd * 2 + 0.16).translate(tx, ty + 0.42, tz), bambooLight))
+  // Back & side bamboo backrest rails
+  parts.push(coloured(new BoxGeometry(0.045, 0.045, hd * 2).translate(tx - hw, ty + 0.74, tz), bambooLight))
+  parts.push(coloured(new BoxGeometry(hw * 2, 0.045, 0.045).translate(tx, ty + 0.74, tz - hd), bambooLight))
+  parts.push(coloured(new BoxGeometry(hw * 2, 0.045, 0.045).translate(tx, ty + 0.74, tz + hd), bambooLight))
+
+  // Roof tie-beams & purlins
+  parts.push(coloured(new BoxGeometry(hw * 2 + 0.28, 0.065, 0.065).translate(tx, ty + 1.52, tz - hd), postColor))
+  parts.push(coloured(new BoxGeometry(hw * 2 + 0.28, 0.065, 0.065).translate(tx, ty + 1.52, tz + hd), postColor))
+  parts.push(coloured(new BoxGeometry(0.065, 0.065, hd * 2 + 0.28).translate(tx - hw, ty + 1.52, tz), postColor))
+  parts.push(coloured(new BoxGeometry(0.065, 0.065, hd * 2 + 0.28).translate(tx + hw, ty + 1.52, tz), postColor))
+
+  // Layered nipa palm thatch roof (3 overlapping tiers + ridge cap for realistic depth & overhang)
+  const eave = new CylinderGeometry(0.92, 1.58, 0.36, 4, 1)
+  eave.rotateY(Math.PI / 4)
+  eave.scale(1.26, 1.0, 0.98)
+  eave.translate(tx, ty + 1.68, tz)
+  parts.push(coloured(eave, thatchBase, 0.06))
+
+  const midRoof = new CylinderGeometry(0.42, 1.12, 0.38, 4, 1)
+  midRoof.rotateY(Math.PI / 4)
+  midRoof.scale(1.24, 1.0, 0.96)
+  midRoof.translate(tx, ty + 1.96, tz)
+  parts.push(coloured(midRoof, thatchMid, 0.06))
+
+  const crown = new ConeGeometry(0.62, 0.34, 4)
+  crown.rotateY(Math.PI / 4)
+  crown.scale(1.28, 1.0, 0.94)
+  crown.translate(tx, ty + 2.22, tz)
+  parts.push(coloured(crown, thatchTop, 0.07))
+
+  // Bamboo ridge pole cap
+  parts.push(coloured(new BoxGeometry(0.72, 0.07, 0.12).translate(tx, ty + 2.34, tz), postColor))
 
   const merged = mergeGeometries(parts, false)!
   parts.forEach((g) => g.dispose())
