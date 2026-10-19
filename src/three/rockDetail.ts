@@ -273,7 +273,8 @@ export function applyRockDetail(material: MeshStandardMaterial, opts: RockDetail
         '#include <worldpos_vertex>',
         `#include <worldpos_vertex>
         vRdPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
-        vRdNormal = normalize(mat3(modelMatrix) * objectNormal);`,
+        // via the normal matrix, so the island's non-uniform (vertical) scale doesn't flatten slopes
+        vRdNormal = inverseTransformDirection(transformedNormal, viewMatrix);`,
       )
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\n${DETAIL_PARS}`)
