@@ -32,6 +32,8 @@ export const ISLAND = {
   grassLine: 4.2,
   /** Multiplied into the model's albedo to warm up the rock (white = as exported). */
   tint: '#ffdfb8',
+  /** Set true to render the geometrically accurate stratified procedural island instead of the AI scan. */
+  useProcedural: false,
 } as const
 
 export const OCEAN = {

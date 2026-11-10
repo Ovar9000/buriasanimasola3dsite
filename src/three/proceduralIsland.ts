@@ -237,13 +237,25 @@ function buildMesa() {
         const layer = y / LAYER + layerJitter
         const idx = Math.floor(layer)
         const f = layer - idx
-        // each band juts out a different amount, with notches between bands
-        let m = 1 + simplex.noise(idx * 3.7, phi * 1.6) * 0.022 - 0.016 * smoothstep(0.7, 0.98, f)
-        // vertical erosion runnels
-        m += fbm2(phi * 14, y * 0.18, 3) * 0.035
-        // wave-cut undercut at the waterline
-        m -= 0.045 * (1 - smoothstep(0.1, 1.6, y)) * smoothstep(-1.2, 0.1, y)
-        // rounded, vegetated brow
+
+        // Master package beds (~1.4m) + rhythmic sandstone ledges with angular steps
+        const pkg = Math.floor(y / 1.4)
+        const pkgF = (y / 1.4) - pkg
+        const stepOverhang = smoothstep(0.04, 0.22, f) * (1 - smoothstep(0.84, 0.98, f))
+        let m = 1 + simplex.noise(idx * 2.7, phi * 1.5) * 0.038 + 0.026 * stepOverhang
+
+        // Recessed bedding groove between layers
+        m -= 0.024 * (1 - smoothstep(0.12, 0.88, f))
+        // Major package ledge setback
+        m += 0.022 * smoothstep(0.85, 1.0, pkgF)
+
+        // Vertical erosion runnels & joint facets
+        m += (fbm2(phi * 16, y * 0.16, 3) - 0.5) * 0.035
+        // Wave-cut undercut notch at the waterline (deepest on the exposed west face)
+        const westExpose = 0.5 - 0.5 * Math.cos(phi) // 1 on west (-X), 0 on east (+X)
+        const notchDepth = 0.06 + 0.045 * westExpose
+        m -= notchDepth * (1 - smoothstep(0.05, 1.6, y)) * smoothstep(-1.2, 0.05, y)
+        // Rounded, vegetated brow
         m -= BROW * Math.pow(smoothstep(top - 1.6, top, y), 2)
         x = cx * r0 * m
         z = sz * r0 * m
@@ -408,6 +420,18 @@ function buildSlabs() {
     parts.push(slab(x, z, size * (1.25 + rand() * 0.55), size * (0.72 + rand() * 0.4), h, yaw, rand, -t * 0.08))
   }
 
+  // The iconic "Mermaid's Lair" tidal pools (carved circular basins with wave-sculpted stone rims)
+  const pools: [number, number, number, number][] = [
+    [-3.2, 21.0, 2.1, 0.42], // Main circular jacuzzi pool
+    [-1.8, 19.4, 1.4, 0.35], // Secondary tidal basin
+    [-4.5, 22.8, 1.6, 0.38], // Outer seaward channel pool
+  ]
+  for (const [px, pz, pr, ph] of pools) {
+    const basin = new CylinderGeometry(pr, pr * 1.15, ph, 24, 1, true)
+    basin.translate(px, -ph * 0.35, pz)
+    parts.push(coloured(basin, '#46382a', 0.05))
+  }
+
   // Natural low wave-cut rock shelves emerging through the sand at the south-east corner (replaces artificial 5x4 puck grid).
   const shelves: [number, number, number, number, number][] = [
     [eastShorePoint(11.6, 1.1)[0], 11.6, 2.8, 1.7, 0.35],
@@ -523,6 +547,22 @@ function buildProps() {
 
   // Bamboo ridge pole cap
   parts.push(coloured(new BoxGeometry(0.72, 0.07, 0.12).translate(tx, ty + 2.34, tz), postColor))
+
+  // 3D wind-swept coastal shrubs (Pemphis acidula & Scaevola) on the summit plateau
+  const shrubColors = ['#44562c', '#4e6234', '#596d3c', '#394b26', '#657442']
+  const pRand = mulberry32(1984)
+  for (let i = 0; i < 36; i++) {
+    const phi = pRand() * Math.PI * 2
+    const r = mesaRadius(phi) * (0.18 + 0.74 * pRand())
+    const sx = Math.cos(phi) * r
+    const sz = Math.sin(phi) * r
+    const sy = summitHeight(sx, sz)
+    const s = 0.35 + 0.45 * pRand()
+    const shrubGeo = new IcosahedronGeometry(s, 1)
+    shrubGeo.scale(1.1 + 0.35 * pRand(), 0.55 + 0.2 * pRand(), 1.0 + 0.3 * pRand())
+    shrubGeo.translate(sx, sy + s * 0.45, sz)
+    parts.push(coloured(shrubGeo, shrubColors[i % shrubColors.length], 0.08))
+  }
 
   const merged = mergeGeometries(parts, false)!
   parts.forEach((g) => g.dispose())

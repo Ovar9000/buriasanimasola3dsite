@@ -20,6 +20,13 @@ interface IslandProps {
  * stand-in if the model is missing or fails to parse.
  */
 export function Island({ onReady }: IslandProps) {
+  const forceProcedural =
+    ISLAND.useProcedural || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('model') === 'procedural')
+
+  if (forceProcedural) {
+    return <ProceduralIsland onReady={onReady} />
+  }
+
   return (
     <AssetBoundary name="models/animasola-island.glb" fallback={<ProceduralIsland onReady={onReady} />}>
       <IslandModel onReady={onReady} />
