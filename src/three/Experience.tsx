@@ -36,7 +36,11 @@ export function Experience() {
 
   const step = useCallback(
     (dir: 1 | -1) => {
-      const i = TIERS.indexOf(useExplorerStore.getState().quality)
+      // Don't auto-downgrade during camera movements or intro fly-in
+      const st = useExplorerStore.getState()
+      if (st.isFlying || !st.introDone) return
+
+      const i = TIERS.indexOf(st.quality)
       setQuality(TIERS[Math.min(ceiling, Math.max(0, i + dir))])
     },
     [setQuality, ceiling],

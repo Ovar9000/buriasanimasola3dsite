@@ -41,6 +41,12 @@ export function useKeyboardShortcuts() {
         case 'H':
           st.resetView()
           break
+        case 'q':
+        case 'Q': {
+          const next = st.quality === 'low' ? 'medium' : st.quality === 'medium' ? 'high' : 'low'
+          st.setQuality(next)
+          break
+        }
         default:
           return
       }

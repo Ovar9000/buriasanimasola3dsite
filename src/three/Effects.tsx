@@ -33,19 +33,19 @@ export function Effects() {
     <EffectComposer multisampling={high ? 4 : 0} enableNormalPass={false}>
       <N8AO
         ref={ao}
-        aoRadius={2.2}
-        distanceFalloff={1.2}
-        intensity={2.2}
+        aoRadius={2.0}
+        distanceFalloff={1.8}
+        intensity={1.0}
         quality={high ? 'medium' : 'performance'}
         halfRes={!high}
         depthAwareUpsampling
-        color="#0d1622"
+        color="#08101a"
       />
-      <Bloom ref={bloom} mipmapBlur luminanceThreshold={0.9} luminanceSmoothing={0.25} intensity={0.35} radius={0.75} levels={high ? 8 : 6} />
+      <Bloom ref={bloom} mipmapBlur luminanceThreshold={0.92} luminanceSmoothing={0.25} intensity={0.24} radius={0.7} levels={high ? 8 : 6} />
       <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
-      <HueSaturation saturation={0.12} />
-      <BrightnessContrast brightness={0.01} contrast={0.08} />
-      <Vignette offset={0.35} darkness={high ? 0.32 : 0.24} />
+      <HueSaturation saturation={0.03} />
+      <BrightnessContrast brightness={0.015} contrast={0.04} />
+      <Vignette offset={0.35} darkness={high ? 0.25 : 0.18} />
       {!high && <SMAA />}
     </EffectComposer>
   )

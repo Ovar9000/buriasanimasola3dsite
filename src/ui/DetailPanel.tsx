@@ -23,7 +23,7 @@ export function DetailPanel() {
           className="glass fixed bottom-4 right-4 top-[84px] z-20 flex flex-col overflow-hidden rounded-[28px]"
           aria-label={`${hotspot.title} details`}
         >
-          <AnimatePresence mode="wait" initial={false}>
+          <AnimatePresence mode="popLayout" initial={false}>
             <motion.div
               key={hotspot.id}
               initial={{ opacity: 0, y: 12 }}

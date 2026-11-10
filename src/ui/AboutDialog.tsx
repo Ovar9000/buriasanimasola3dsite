@@ -7,6 +7,7 @@ const SHORTCUTS: [string, string][] = [
   ['← →', 'Previous / next waypoint'],
   ['T', 'Start / pause guided tour'],
   ['L', 'Toggle day / sunset'],
+  ['Q', 'Cycle quality (Low / Med / High)'],
   ['H', 'Back to overview'],
   ['Esc', 'Close panel'],
 ]

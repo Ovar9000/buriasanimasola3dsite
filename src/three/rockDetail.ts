@@ -175,10 +175,10 @@ const DETAIL_ALBEDO = /* glsl */ `
     cliff = mix(rock, detail, near) * texMod;
     cliffRough = clamp(0.80 + groove * 0.14 + cracks * 0.10 - sunBleach * 0.06, 0.65, 0.96);
 
-    // Wave-splash darkening & intertidal algae near sea level (y < 0.48)
-    float splash = 1.0 - smoothstep(-0.05, 0.48, p.y);
-    cliff = mix(cliff, cliff * vec3(0.42, 0.44, 0.38), splash * 0.80);
-    cliffRough = mix(cliffRough, 0.22, splash * 0.88);
+    // Wave-splash darkening & intertidal algae near sea level (y < 0.65)
+    float splash = 1.0 - smoothstep(-0.05, 0.65, p.y);
+    cliff = mix(cliff, cliff * vec3(0.38, 0.40, 0.35), splash * 0.82);
+    cliffRough = mix(cliffRough, 0.16, splash * 0.92);
 
     // Hanging coastal scrub / dwarf shrubs clinging to fractured ledges (main island only)
     if (rdGrassLine < 50.0) {

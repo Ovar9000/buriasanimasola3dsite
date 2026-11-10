@@ -1,6 +1,19 @@
 import { motion } from 'framer-motion'
-import { Info, Pause, Play, RotateCcw, Sun, Sunset } from 'lucide-react'
+import { Info, Pause, Play, RotateCcw, Sparkles, Sun, Sunset } from 'lucide-react'
+import type { QualityTier } from '../lib/types'
 import { useExplorerStore } from '../store/useExplorerStore'
+
+const NEXT_QUALITY: Record<QualityTier, QualityTier> = {
+  low: 'medium',
+  medium: 'high',
+  high: 'low',
+}
+
+const QUALITY_LABEL: Record<QualityTier, string> = {
+  low: 'Low (fast)',
+  medium: 'Medium (balanced)',
+  high: 'High (ultra)',
+}
 
 export function TopBar() {
   const touring = useExplorerStore((s) => s.touring)
@@ -9,6 +22,8 @@ export function TopBar() {
   const setTimeOfDay = useExplorerStore((s) => s.setTimeOfDay)
   const resetView = useExplorerStore((s) => s.resetView)
   const setAboutOpen = useExplorerStore((s) => s.setAboutOpen)
+  const quality = useExplorerStore((s) => s.quality)
+  const setQuality = useExplorerStore((s) => s.setQuality)
 
   return (
     <header className="safe-top pointer-events-none fixed inset-x-0 top-0 z-40 flex items-start justify-between gap-2 px-3 sm:px-5">
@@ -72,6 +87,19 @@ export function TopBar() {
             )
           })}
         </div>
+
+        <button
+          type="button"
+          onClick={() => setQuality(NEXT_QUALITY[quality])}
+          className="icon-btn gap-1.5 px-2.5 text-xs font-semibold"
+          aria-label={`Graphics quality: ${QUALITY_LABEL[quality]}. Tap to cycle`}
+          title={`Quality: ${QUALITY_LABEL[quality]} — tap to change`}
+        >
+          <Sparkles size={16} className={quality === 'high' ? 'text-lagoon-300' : 'text-white/60'} aria-hidden />
+          <span className="hidden uppercase tracking-wider min-[540px]:inline">
+            {quality === 'high' ? 'High' : quality === 'medium' ? 'Med' : 'Low'}
+          </span>
+        </button>
 
         <button type="button" onClick={resetView} className="icon-btn" aria-label="Reset view" title="Overview (H)">
           <RotateCcw size={17} aria-hidden />

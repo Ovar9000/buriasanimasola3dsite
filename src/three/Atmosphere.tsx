@@ -140,31 +140,56 @@ function SkyEnvironment({ sky }: { sky: Mesh }) {
     const dome = new Mesh(sky.geometry, sky.material)
     dome.scale.setScalar(0.01)
     envScene.add(dome)
-    return { envScene, pmrem: new PMREMGenerator(gl), target: null as WebGLRenderTarget | null, blend: Number.NaN, last: 0, frames: 0 }
+    return {
+      envScene,
+      pmrem: new PMREMGenerator(gl),
+      targetDay: null as WebGLRenderTarget | null,
+      targetSunset: null as WebGLRenderTarget | null,
+      currentTarget: null as WebGLRenderTarget | null,
+      frames: 0,
+    }
   }, [gl, sky])
 
-  useFrame(({ clock }) => {
-    // Let <Atmosphere> push the sky uniforms once before the first capture.
-    if (state.frames++ < 1) return
+  useFrame(() => {
+    // Let <Atmosphere> push the sky uniforms before capture
+    if (state.frames++ < 2) return
+
     const blend = atmosphere.blend
-    const now = clock.elapsedTime
-    const changed = blend !== state.blend
-    if (!changed && state.target) return
-    // While blending, refresh at most ~6× a second; always catch the final value.
+    // Capture on startup, and only re-filter once transitions have settled.
+    // This avoids stalling the GPU with 6x cubemap bakes/sec during camera flights!
     const settled = blend === 0 || blend === 1
-    if (state.target && !settled && now - state.last < 0.16) return
-    const next = state.pmrem.fromScene(state.envScene, 0, 0.1, 100, { size: 128 })
-    scene.environment = next.texture
-    state.target?.dispose()
-    state.target = next
-    state.blend = blend
-    state.last = now
+
+    if (blend === 0 && !state.targetDay) {
+      state.targetDay = state.pmrem.fromScene(state.envScene, 0, 0.1, 100, { size: 256 })
+    } else if (blend === 1 && !state.targetSunset) {
+      state.targetSunset = state.pmrem.fromScene(state.envScene, 0, 0.1, 100, { size: 256 })
+    }
+
+    const desired = blend > 0.5 ? state.targetSunset ?? state.targetDay : state.targetDay ?? state.targetSunset
+    if (desired && scene.environment !== desired.texture) {
+      scene.environment = desired.texture
+      state.currentTarget = desired
+    }
+
+    // When fully settled, ensure the settled target exists and is active
+    if (settled) {
+      const isDay = blend === 0
+      const active = isDay ? state.targetDay : state.targetSunset
+      if (!active) {
+        const next = state.pmrem.fromScene(state.envScene, 0, 0.1, 100, { size: 256 })
+        if (isDay) state.targetDay = next
+        else state.targetSunset = next
+        scene.environment = next.texture
+        state.currentTarget = next
+      }
+    }
   })
 
   useEffect(
     () => () => {
-      if (state.target && scene.environment === state.target.texture) scene.environment = null
-      state.target?.dispose()
+      scene.environment = null
+      state.targetDay?.dispose()
+      state.targetSunset?.dispose()
       state.pmrem.dispose()
     },
     [scene, state],

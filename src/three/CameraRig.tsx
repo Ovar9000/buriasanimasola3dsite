@@ -87,9 +87,11 @@ export function CameraRig() {
         onUpdate: () => {
           const t = proxy.t
           // Pull out slightly mid-flight for a cinematic arc, more for longer trips.
-          const swell = opts.intro ? 0 : Math.sin(Math.PI * t) * Math.min(0.35, travel * 0.18)
+          const swell = opts.intro ? 0 : Math.sin(Math.PI * t) * Math.min(0.28, travel * 0.16)
           s.radius = MathUtils.lerp(s0.radius, s1.radius, t) * (1 + swell)
-          s.phi = MathUtils.lerp(s0.phi, s1.phi, t) - Math.sin(Math.PI * t) * swell * 0.6
+          // Keep phi safely bounded away from the zenith pole (0.22) and ground
+          const targetPhi = MathUtils.lerp(s0.phi, s1.phi, t) - Math.sin(Math.PI * t) * swell * 0.35
+          s.phi = MathUtils.clamp(targetPhi, 0.22, CONTROLS.maxPolarAngle)
           s.theta = s0.theta + dTheta * t
           s.makeSafe()
           camera.position.setFromSpherical(s).add(PIVOT)
@@ -187,12 +189,19 @@ export function CameraRig() {
     const panelOpen = st.activeId !== null
     const wantX = panelOpen && desktop ? Math.min(LAYOUT.panelWidth, size.width * 0.4) / 2 : 0
     const wantY = panelOpen && !desktop ? (size.height * LAYOUT.sheetPeek) / 2 - 24 : 0
-    const k = 1 - Math.exp(-delta * 4)
+    const k = 1 - Math.exp(-delta * 6)
     offset.current.x += (wantX - offset.current.x) * k
     offset.current.y += (wantY - offset.current.y) * k
-    if (Math.abs(offset.current.x) < 0.5 && Math.abs(offset.current.y) < 0.5 && wantX === 0 && wantY === 0) {
-      if (camera.view?.enabled) camera.clearViewOffset()
-    } else {
+
+    const diffX = Math.abs(wantX - offset.current.x)
+    const diffY = Math.abs(wantY - offset.current.y)
+    if (diffX < 0.25 && diffY < 0.25 && wantX === 0 && wantY === 0) {
+      if (camera.view?.enabled) {
+        camera.clearViewOffset()
+        offset.current.x = 0
+        offset.current.y = 0
+      }
+    } else if (diffX > 0.1 || diffY > 0.1 || !camera.view?.enabled) {
       camera.setViewOffset(size.width, size.height, offset.current.x, offset.current.y, size.width, size.height)
     }
   })

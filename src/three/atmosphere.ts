@@ -72,10 +72,10 @@ export const PRESETS: Record<'day' | 'sunset', Preset> = {
     scatter: '#15c0b4',
     shallows: '#ffffff',
     lagoonGlow: 0.22,
-    ao: 2.0,
+    ao: 1.0,
     envIntensity: 0.95,
-    exposure: 1.04,
-    bloom: 0.32,
+    exposure: 1.08,
+    bloom: 0.24,
   },
   sunset: {
     sunElevation: 13,
@@ -100,10 +100,10 @@ export const PRESETS: Record<'day' | 'sunset', Preset> = {
     scatter: '#2f8c86',
     shallows: '#f2ddc9',
     lagoonGlow: 0.3,
-    ao: 1.6,
+    ao: 0.85,
     envIntensity: 0.85,
-    exposure: 1.0,
-    bloom: 0.6,
+    exposure: 1.04,
+    bloom: 0.38,
   },
 }
 
