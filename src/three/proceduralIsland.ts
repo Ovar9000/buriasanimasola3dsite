@@ -155,9 +155,9 @@ export function terrainHeight(x: number, z: number) {
   return h
 }
 
-const SAND = new Color('#e8dcc4')
-const PEBBLE = new Color('#cab99e')
-const SAND_WET = new Color('#9e8a6f')
+const SAND = new Color('#ddd0ba')
+const PEBBLE = new Color('#c2b298')
+const SAND_WET = new Color('#968267')
 const SEABED = new Color('#74b2a5')
 
 function buildTerrain() {
@@ -311,19 +311,36 @@ function buildMesa() {
 // Flat rock slabs (the tail) + rubble at the cliff foot
 // ---------------------------------------------------------------------------
 
-const SLAB_COLORS = ['#c4a47a', '#b8966c', '#c8ae86', '#ab8b62', '#d2b68c'].map((h) => new Color(h))
-const RUBBLE = new Color('#a88b68')
+const SLAB_COLORS = ['#cfc3ae', '#c5b69d', '#d7cbb7', '#b9a98e', '#c8bca6'].map((h) => new Color(h))
+const RUBBLE = new Color('#b8aa92')
 
-const SLAB_WET = new Color('#524130')
+const SLAB_WET = new Color('#483e32')
+
+export interface ReefFeature {
+  x: number
+  z: number
+  rx: number
+  rz: number
+  yaw: number
+}
+
+const SLAB_FOOTPRINTS: ReefFeature[] = []
+
+/** World-space XZ footprints of slabs and reef outcrops (used to shape seabed shallows & surf foam). */
+export function getSlabFootprints(): readonly ReefFeature[] {
+  if (!dressing) getIslandDressing()
+  return SLAB_FOOTPRINTS
+}
 
 function slab(x: number, z: number, length: number, width: number, height: number, yaw: number, rand: () => number, yOffset = 0) {
-  const SIDES = 32
-  const g = new CylinderGeometry(1, 1, 1, SIDES, 4)
+  SLAB_FOOTPRINTS.push({ x, z, rx: length * 0.5, rz: width * 0.5, yaw })
+  const SIDES = 36
+  const g = new CylinderGeometry(1, 1, 1, SIDES, 5)
   g.deleteAttribute('uv')
   const pos = g.attributes.position
   const seed = rand() * 100
-  const tiltX = (rand() - 0.5) * 0.06
-  const tiltZ = (rand() - 0.5) * 0.06
+  const tiltX = (rand() - 0.5) * 0.08
+  const tiltZ = (rand() - 0.5) * 0.08
   const v = new Vector3()
   for (let i = 0; i < pos.count; i++) {
     v.fromBufferAttribute(pos, i)
@@ -332,11 +349,11 @@ function slab(x: number, z: number, length: number, width: number, height: numbe
       // Angular fractured limestone outline with stepped wave-cut ledges
       const a = Math.atan2(v.z, v.x)
       const k =
-        0.84 +
-        simplex.noise(Math.cos(a) * 1.2 + seed, Math.sin(a) * 1.2) * 0.18 +
-        simplex.noise(Math.cos(a) * 3.4 - seed, Math.sin(a) * 3.4) * 0.07 +
-        simplex.noise(Math.cos(a) * 7.1 + seed, Math.sin(a) * 7.1) * 0.025
-      const step = v.y > 0.48 ? 0.91 : v.y > 0.15 ? 0.96 : v.y < -0.15 ? 1.04 : 1
+        0.82 +
+        simplex.noise(Math.cos(a) * 1.35 + seed, Math.sin(a) * 1.35) * 0.2 +
+        simplex.noise(Math.cos(a) * 3.8 - seed, Math.sin(a) * 3.8) * 0.09 +
+        simplex.noise(Math.cos(a) * 8.2 + seed, Math.sin(a) * 8.2) * 0.035
+      const step = v.y > 0.48 ? 0.89 : v.y > 0.15 ? 0.96 : v.y < -0.15 ? 1.06 : 1
       v.x *= k * step
       v.z *= k * step
     }
@@ -356,16 +373,16 @@ function slab(x: number, z: number, length: number, width: number, height: numbe
     const wx = pos.getX(i)
     const wy = pos.getY(i)
     const wz = pos.getZ(i)
-    cc.copy(col).offsetHSL(0, 0, nrm.getY(i) > 0.7 ? 0.03 : -0.05)
-    cc.offsetHSL(0, -0.02, simplex.noise(wx * 0.9 + seed, wz * 0.9) * 0.05)
-    cc.lerp(SLAB_WET, (1 - smoothstep(-0.04, 0.24, wy)) * 0.8)
+    cc.copy(col).offsetHSL(0, 0, nrm.getY(i) > 0.7 ? 0.03 : -0.06)
+    cc.offsetHSL(0, -0.02, simplex.noise(wx * 1.1 + seed, wz * 1.1) * 0.06)
+    cc.lerp(SLAB_WET, (1 - smoothstep(-0.04, 0.28, wy)) * 0.85)
     colors.set([cc.r, cc.g, cc.b], i * 3)
   }
   g.setAttribute('color', new Float32BufferAttribute(colors, 3))
   return g
 }
 
-function boulder(x: number, z: number, r: number, rand: () => number) {
+function boulder(x: number, z: number, r: number, rand: () => number, yBase?: number) {
   let g: BufferGeometry = new IcosahedronGeometry(r, 2)
   g.deleteAttribute('uv')
   g.deleteAttribute('normal')
@@ -373,16 +390,20 @@ function boulder(x: number, z: number, r: number, rand: () => number) {
   const pos = g.attributes.position
   const v = new Vector3()
   const seed = rand() * 100
-  const y0 = terrainHeight(x, z)
+  const y0 = yBase ?? terrainHeight(x, z)
   for (let i = 0; i < pos.count; i++) {
     v.fromBufferAttribute(pos, i)
-    const k = 1 + simplex.noise3d(v.x * 1.4 + seed, v.y * 1.4, v.z * 1.4) * 0.22
-    pos.setXYZ(i, x + v.x * k, y0 + v.y * k * 0.75, z + v.z * k)
+    const k = 1 + simplex.noise3d(v.x * 1.4 + seed, v.y * 1.4, v.z * 1.4) * 0.26
+    pos.setXYZ(i, x + v.x * k, y0 + v.y * k * 0.65, z + v.z * k)
   }
   g.computeVertexNormals()
   const cc = RUBBLE.clone().offsetHSL(0, 0, (rand() - 0.5) * 0.08)
   const colors = new Float32Array(pos.count * 3)
-  for (let i = 0; i < pos.count; i++) colors.set([cc.r, cc.g, cc.b], i * 3)
+  for (let i = 0; i < pos.count; i++) {
+    const wy = pos.getY(i)
+    const c = cc.clone().lerp(SLAB_WET, (1 - smoothstep(-0.04, 0.25, wy)) * 0.85)
+    colors.set([c.r, c.g, c.b], i * 3)
+  }
   g.setAttribute('color', new Float32BufferAttribute(colors, 3))
   return g
 }
@@ -395,8 +416,9 @@ function mergeParts(parts: BufferGeometry[]) {
   return merged
 }
 
-/** Flat slabs: the southern tail, coastal rock shelves and reef scatter. */
+/** Flat slabs: the southern tail, coastal rock shelves and reef outcrops. */
 function buildSlabs() {
+  SLAB_FOOTPRINTS.length = 0
   const rand = mulberry32(SEED + 7)
   const parts: BufferGeometry[] = []
 
@@ -420,7 +442,7 @@ function buildSlabs() {
     parts.push(slab(x, z, size * (1.25 + rand() * 0.55), size * (0.72 + rand() * 0.4), h, yaw, rand, -t * 0.08))
   }
 
-  // Natural low wave-cut rock shelves emerging through the sand at the south-east corner (replaces artificial 5x4 puck grid).
+  // Natural low wave-cut rock shelves emerging through the sand at the south-east corner.
   const shelves: [number, number, number, number, number][] = [
     [eastShorePoint(11.6, 1.1)[0], 11.6, 2.8, 1.7, 0.35],
     [eastShorePoint(13.2, 1.8)[0], 13.2, 2.4, 1.5, 0.22],
@@ -432,14 +454,23 @@ function buildSlabs() {
     parts.push(slab(sx, sz, sl, sw, 0.38 + rand() * 0.18, syaw, rand, th * 0.5))
   }
 
-  // Low tidal reef rocks around the perimeter, sitting naturally in the shallows.
+  // Craggy weathered reef boulders tucked naturally around the shallows (avoiding flat disc look).
   const scatter: [number, number][] = [
     [-11.5, -7], [-12.2, -1.5], [-11.2, 5.5], [-10.2, 10.5], [-6.5, -14.5], [3.5, -16.8], [10.8, -8.5], [11.5, 11.5],
   ]
   for (const [x, z] of scatter) {
     const sx = x + (rand() - 0.5) * 1.5
     const sz = z + (rand() - 0.5) * 1.5
-    parts.push(slab(sx, sz, 1.6 + rand() * 1.8, 1.1 + rand() * 1.1, 0.38 + rand() * 0.32, rand() * Math.PI, rand, -0.08))
+    const r = 0.72 + rand() * 0.55
+    SLAB_FOOTPRINTS.push({ x: sx, z: sz, rx: r * 1.3, rz: r * 1.1, yaw: rand() * Math.PI })
+    parts.push(boulder(sx, sz, r, rand, -0.14))
+    if (rand() > 0.35) {
+      const ox = sx + (rand() - 0.5) * 1.1
+      const oz = sz + (rand() - 0.5) * 1.1
+      const sr = r * (0.55 + rand() * 0.25)
+      SLAB_FOOTPRINTS.push({ x: ox, z: oz, rx: sr * 1.2, rz: sr * 1.1, yaw: 0 })
+      parts.push(boulder(ox, oz, sr, rand, -0.18))
+    }
   }
 
   return mergeParts(parts)

@@ -85,7 +85,9 @@ vec3 rdPerturb(vec3 surfPos, vec3 surfNorm, vec2 dHdxy, float faceDir) {
   vec3 r2 = cross(surfNorm, sx);
   float det = dot(sx, r1) * faceDir;
   vec3 grad = sign(det) * (dHdxy.x * r1 + dHdxy.y * r2);
-  return normalize(abs(det) * surfNorm - grad);
+  vec3 res = abs(det) * surfNorm - grad;
+  float l2 = dot(res, res);
+  return l2 > 1e-12 ? res * inversesqrt(l2) : surfNorm;
 }
 `
 
@@ -93,7 +95,8 @@ const DETAIL_ALBEDO = /* glsl */ `
 {
   vec3 n = normalize(vRdNormal);
   vec3 p = vRdPos;
-  vec3 w = pow(abs(n), vec3(4.0));
+  vec3 n2 = n * n;
+  vec3 w = n2 * n2;
   w /= max(dot(w, vec3(1.0)), 1e-4);
   // fade detail that would be smaller than a few pixels
   float footprint = length(fwidth(p));
@@ -129,12 +132,13 @@ const DETAIL_ALBEDO = /* glsl */ `
     float id = floor(sy);
     float f = fract(sy);
 
-    // Master beds (~0.65m packages) + medium strata (rdLayer) + lateral pinch-out
-    float pkgY = y / 0.68;
+    // Master beds (~0.75m packages) + medium strata (rdLayer) + lateral pinch-out
+    float pkgWarp = (rdFbm(vec2(p.x * 0.14, p.z * 0.14) + 3.2) - 0.5) * 0.35;
+    float pkgY = y / (0.76 + pkgWarp * 0.18);
     float pkg = floor(pkgY);
     float pkgFract = fract(pkgY);
-    vec3 rock = mix(rdPalette(rdHash(vec2(pkg, 7.3))), rdPalette(rdHash(vec2(pkg + 1.0, 7.3))), smoothstep(0.82, 1.0, pkgFract));
-    rock *= mix(0.85, 1.13, rdHash(vec2(id, 3.7)));
+    vec3 rock = mix(rdPalette(rdHash(vec2(pkg, 7.3))), rdPalette(rdHash(vec2(pkg + 1.0, 7.3))), smoothstep(0.68, 1.0, pkgFract));
+    rock *= mix(0.89, 1.10, rdHash(vec2(id, 3.7)));
 
     // Lateral coordinate purely from world position so derivatives stay smooth across triangle edges
     float u = (p.x - p.z) * 0.7071;
@@ -147,9 +151,9 @@ const DETAIL_ALBEDO = /* glsl */ `
     rock *= mix(vec3(1.0), vec3(0.58, 0.53, 0.48), streak * 0.48);
 
     // Multi-scale bedding grooves: deep master notches + laterally varying minor grooves
-    float majorGroove = 1.0 - smoothstep(0.0, 0.12, pkgFract) * smoothstep(1.0, 0.88, pkgFract);
+    float majorGroove = 1.0 - smoothstep(0.0, 0.12, pkgFract) * (1.0 - smoothstep(0.88, 1.0, pkgFract));
     float minorPresence = smoothstep(0.22, 0.78, lateralVar);
-    float minorGroove = (1.0 - smoothstep(0.0, 0.18, f) * smoothstep(1.0, 0.82, f)) * minorPresence;
+    float minorGroove = (1.0 - smoothstep(0.0, 0.18, f) * (1.0 - smoothstep(0.82, 1.0, f))) * minorPresence;
     groove = clamp(majorGroove * 0.75 + minorGroove * 0.65, 0.0, 1.0);
 
     // Fine sedimentary laminae + horizontal solution pitting on flat slab tops + vertical block joints
@@ -257,11 +261,11 @@ export function applyRockDetail(material: MeshStandardMaterial, opts: RockDetail
     rdGrassGreen: { value: new Color('#4d7d2b') },
     rdGrassGold: { value: new Color('#a89d52') },
     rdShrub: { value: new Color('#2d541c') },
-    rdSand: { value: new Color('#e6dac4') },
-    rdRockA: { value: new Color('#c49e72') },
-    rdRockB: { value: new Color('#d8bc92') },
-    rdRockC: { value: new Color('#9c7b56') },
-    rdRockD: { value: new Color('#b5936b') },
+    rdSand: { value: new Color('#dad0bc') },
+    rdRockA: { value: new Color('#c2a179') },
+    rdRockB: { value: new Color('#d3b892') },
+    rdRockC: { value: new Color('#9e7e5b') },
+    rdRockD: { value: new Color('#b69772') },
   }
   const previous = material.onBeforeCompile
   material.onBeforeCompile = (shader, renderer) => {
@@ -348,7 +352,9 @@ export function applyBeachDetail(material: MeshStandardMaterial) {
           vec3 r2 = cross(normal, sx);
           float det = dot(sx, r1) * faceDirection;
           vec2 dB = vec2(dFdx(bdBump), dFdy(bdBump));
-          normal = normalize(abs(det) * normal - sign(det) * (dB.x * r1 + dB.y * r2));
+          vec3 res = abs(det) * normal - sign(det) * (dB.x * r1 + dB.y * r2);
+          float l2 = dot(res, res);
+          if (l2 > 1e-12) normal = res * inversesqrt(l2);
         }`,
       )
   }
