@@ -1,9 +1,10 @@
 import { useFrame, useThree } from '@react-three/fiber'
 import gsap from 'gsap'
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { Fog, Mesh, PMREMGenerator, Scene, type DirectionalLight, type HemisphereLight, type ShaderMaterial, type WebGLRenderTarget } from 'three'
+import { FogExp2, Mesh, PMREMGenerator, Scene, type DirectionalLight, type HemisphereLight, type ShaderMaterial, type WebGLRenderTarget } from 'three'
 import { useExplorerStore } from '../store/useExplorerStore'
 import { atmosphere, PRESETS, sampleAtmosphere } from './atmosphere.ts'
+import { Clouds } from './Clouds'
 import { createSkyDome } from './SkyDome'
 
 const SHADOW_EXTENT = 42
@@ -38,7 +39,7 @@ export function Atmosphere() {
 
   useLayoutEffect(() => {
     const p = PRESETS.day
-    scene.fog = new Fog(p.fog, 350, 2600)
+    scene.fog = new FogExp2(p.fog, p.fogDensity)
     return () => {
       scene.fog = null
     }
@@ -64,6 +65,7 @@ export function Atmosphere() {
     u.zenith.value.copy(a.zenith)
     u.horizon.value.copy(a.horizon)
     u.horizonSun.value.copy(a.horizonSun)
+    u.fogColor.value.copy(a.fog)
     u.sunGlow.value.copy(a.sunGlow)
     u.glowStrength.value = a.glowStrength
     u.cloudLit.value.copy(a.cloudLit).multiplyScalar(1.15)
@@ -90,7 +92,10 @@ export function Atmosphere() {
       hemi.current.groundColor.copy(a.hemiGround)
       hemi.current.intensity = a.hemiIntensity
     }
-    if (scene.fog) scene.fog.color.copy(a.fog)
+    if (scene.fog) {
+      scene.fog.color.copy(a.fog)
+      if (scene.fog instanceof FogExp2) scene.fog.density = a.fogDensity
+    }
     scene.environmentIntensity = a.envIntensity
     gl.toneMappingExposure = a.exposure
   })
@@ -116,6 +121,7 @@ export function Atmosphere() {
         shadow-camera-near={1}
         shadow-camera-far={300}
       />
+      <Clouds />
       <ImageBasedLighting sky={sky} />
     </>
   )

@@ -50,8 +50,8 @@ export const OVERVIEW_VIEW = {
   polar: 75,
   /** Degrees around Y, 0 = looking from the south (+Z), negative = from the west. */
   azimuth: -38,
-  /** At sunset the overview swings round so the low sun rakes across the cliffs from behind the viewer's right. */
-  sunsetAzimuth: -118,
+  /** At sunset the overview frames the east beach & sign with the golden sun sinking past the island's left horizon. */
+  sunsetAzimuth: 56,
 }
 
 /** Where the camera starts before the intro fly-in. */
