@@ -15,6 +15,63 @@
  *  - The surface uses Schlick Fresnel against the planar reflection, plus an
  *    HDR sun glint that feeds the bloom pass.
  */
+export const OCEAN_VERTEX = /* glsl */ `
+uniform mat4 textureMatrix;
+uniform float time;
+uniform sampler2D seabed;
+uniform vec4 seabedRect;
+
+varying vec4 mirrorCoord;
+varying vec4 worldPosition;
+
+#include <common>
+#include <fog_pars_vertex>
+#include <shadowmap_pars_vertex>
+#include <logdepthbuf_pars_vertex>
+
+float swellHeight(vec2 p) {
+  float h = 0.0;
+  float wl = 46.0;
+  for (int i = 0; i < 4; i++) {
+    float fi = float(i);
+    float angle = 2.75 + fi * 2.39996;
+    vec2 dir = vec2(cos(angle), sin(angle));
+    float k = 6.28318 / wl;
+    float omega = sqrt(9.81 * k);
+    float amp = 0.16 / (1.0 + fi * 0.45);
+    h += sin(k * dot(dir, p) - omega * time + fi * 1.7) * amp;
+    wl *= 0.64;
+  }
+  return h;
+}
+
+void main() {
+  vec4 baseWorld = modelMatrix * vec4(position, 1.0);
+  vec2 suv = (baseWorld.xz - seabedRect.xy) / seabedRect.zw;
+  float bedR = texture2D(seabed, suv).r;
+  float bedDepth = (any(lessThan(suv, vec2(0.0))) || any(greaterThan(suv, vec2(1.0))))
+    ? 40.0
+    : bedR * bedR * 40.0;
+  float dist = length(baseWorld.xz);
+  // Keep water calm right against shallow sand/rocks and fade beyond mid-range so horizon stays crisp
+  float waveMask = smoothstep(0.55, 3.6, bedDepth) * (1.0 - smoothstep(140.0, 440.0, dist));
+
+  vec3 pos = position;
+  pos.z += swellHeight(baseWorld.xz) * waveMask;
+
+  worldPosition = modelMatrix * vec4(pos, 1.0);
+  mirrorCoord = textureMatrix * worldPosition;
+  vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+  gl_Position = projectionMatrix * mvPosition;
+
+  #include <beginnormal_vertex>
+  #include <defaultnormal_vertex>
+  #include <logdepthbuf_vertex>
+  #include <fog_vertex>
+  #include <shadowmap_vertex>
+}
+`
+
 export const OCEAN_FRAGMENT = /* glsl */ `
 uniform sampler2D mirrorSampler;
 uniform sampler2D normalSampler;
@@ -67,17 +124,17 @@ vec2 swellSlope(vec2 p, float footprint) {
   float wavelength = 46.0;
   for (int i = 0; i < OCEAN_WAVES; i++) {
     float fi = float(i);
-    // spread around the trade wind (from the east-north-east)
-    float angle = 2.75 + sin(fi * 2.39) * 0.85;
+    // Golden-angle spread prevents periodic horizontal scanline banding across the sea
+    float angle = 2.75 + fi * 2.39996;
     vec2 dir = vec2(cos(angle), sin(angle));
     float k = 6.28318 / wavelength;
     float omega = sqrt(9.81 * k);
-    float steep = 0.085 * mix(0.45, 1.0, smoothstep(0.0, 3.0, fi)) / (1.0 + fi * 0.12);
+    float steep = 0.072 * mix(0.45, 1.0, smoothstep(0.0, 3.0, fi)) / (1.0 + fi * 0.14);
     float phase = k * dot(dir, p) - omega * time + fi * 1.7;
     // fade bands smaller than a few pixels so the sea never shimmers
     float fade = smoothstep(1.0, 3.0, wavelength / footprint);
     slope += dir * cos(phase) * steep * fade;
-    wavelength *= 0.68;
+    wavelength *= 0.64;
   }
   return slope;
 }
@@ -175,7 +232,7 @@ void main() {
   vec3 transmit = exp(-absorption * path);
 
   // deep-water colour, with sunlit subsurface scattering through wave flanks
-  float sss = pow(max(dot(V, -vec3(L.x, 0.0, L.z)), 0.0), 3.0) * max(slope.x * L.x + slope.y * L.z, 0.0) * 3.0;
+  float sss = pow(max(dot(V, -vec3(L.x, 0.0, L.z)), 1e-4), 3.0) * max(slope.x * L.x + slope.y * L.z, 0.0) * 3.0;
   vec3 deep = waterColor * (0.85 + 0.15 * shadow) + scatterColor * sss * sunUp * mix(0.4, 1.0, shadow);
   vec3 body = mix(deep, bottom, transmit);
   // turquoise / emerald light scattered back up out of the shallows
@@ -187,16 +244,16 @@ void main() {
 
   // ---- sun glint (HDR, feeds bloom)
   vec3 H = normalize(L + V);
-  float NdH = max(dot(N, H), 0.0);
-  float glint = pow(NdH, 1400.0) * 90.0 + pow(NdH, 180.0) * 0.7;
+  float NdH = max(dot(N, H), 1e-4);
+  float glint = pow(NdH, 1200.0) * 75.0 + pow(NdH, 160.0) * 0.95 + pow(NdH, 28.0) * 0.045;
   color += sunColor * sunIntensity * glint * fresnel * shadow * smoothstep(-0.02, 0.08, L.y);
 
   // ---- shore foam & gentle surf wash
   float n = vnoise(p * 1.6 + vec2(time * 0.35, -time * 0.21)) * 0.6 + vnoise(p * 4.3 - time * 0.4) * 0.4;
-  float edge = 1.0 - smoothstep(0.0, 0.07 + n * 0.14, depth);
-  float bands = smoothstep(0.72, 0.98, sin(depth * 15.0 + time * 1.3 + n * 4.0)) * (1.0 - smoothstep(0.04, 0.42, depth));
-  float foam = clamp(edge * (0.42 + 0.55 * n) + bands * smoothstep(0.42, 0.82, n) * 0.65, 0.0, 1.0);
-  vec3 foamColor = vec3(0.93) * (sunLight + ambient) * RECIPROCAL_PI * 1.12;
+  float edge = 1.0 - smoothstep(0.0, 0.11 + n * 0.18, depth);
+  float bands = smoothstep(0.68, 0.97, sin(depth * 14.0 + time * 1.35 + n * 4.2)) * (1.0 - smoothstep(0.04, 0.52, depth));
+  float foam = clamp(edge * (0.48 + 0.55 * n) + bands * smoothstep(0.38, 0.80, n) * 0.72, 0.0, 1.0);
+  vec3 foamColor = vec3(0.95) * (sunLight + ambient) * RECIPROCAL_PI * 1.15;
   color = mix(color, foamColor, foam);
 
   gl_FragColor = vec4(color, 1.0);

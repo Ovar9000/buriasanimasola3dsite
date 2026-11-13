@@ -18,8 +18,8 @@ import { ASSETS } from '../config/assets'
 import { OCEAN } from '../config/scene'
 import { SimplexNoise } from 'three/examples/jsm/math/SimplexNoise.js'
 import { mulberry32, smoothstep } from '../lib/math'
-import { OCEAN_FRAGMENT } from './oceanShader'
-import { islandHasBeach, shoreDistance, tailDistance, terrainHeight } from './proceduralIsland'
+import { OCEAN_FRAGMENT, OCEAN_VERTEX } from './oceanShader'
+import { getSlabFootprints, islandHasBeach, shoreDistance, tailDistance, terrainHeight } from './proceduralIsland'
 import { useExplorerStore } from '../store/useExplorerStore'
 import { sampleAtmosphere } from './atmosphere.ts'
 
@@ -39,7 +39,8 @@ export function Ocean() {
 
   const water = useMemo(() => {
     const res = quality === 'high' ? 1024 : quality === 'medium' ? 768 : 384
-    const w = new Water(new PlaneGeometry(OCEAN.size, OCEAN.size), {
+    const segs = quality === 'low' ? 96 : 152
+    const w = new Water(buildOceanGeometry(OCEAN.size, segs), {
       textureWidth: res,
       textureHeight: res,
       waterNormals: normals,
@@ -53,6 +54,7 @@ export function Ocean() {
     w.renderOrder = -1
     w.receiveShadow = true
     const m = w.material as ShaderMaterial
+    m.vertexShader = OCEAN_VERTEX
     m.fragmentShader = OCEAN_FRAGMENT
     m.defines = { OCEAN_WAVES: quality === 'low' ? 6 : 10, ...(quality === 'low' ? {} : { OCEAN_CAUSTICS: '' }) }
     Object.assign(m.uniforms, {
@@ -112,18 +114,47 @@ export function Ocean() {
   return <primitive object={water} />
 }
 
+/** Radial-graded ocean plane: ~1m triangles near the island, stretching smoothly to the horizon. */
+function buildOceanGeometry(size: number, segs: number) {
+  const geo = new PlaneGeometry(2, 2, segs, segs)
+  const pos = geo.attributes.position
+  const half = size / 2
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i)
+    const y = pos.getY(i)
+    const r = Math.max(Math.abs(x), Math.abs(y))
+    const s = (0.018 + 0.982 * Math.pow(r, 2.3)) * half
+    pos.setXY(i, x * s, y * s)
+  }
+  geo.computeBoundingBox()
+  geo.computeBoundingSphere()
+  return geo
+}
+
 /** Area covered by the baked seabed (world units); outside it the sea is deep. */
 const REEF = { size: 130, centre: [-2, 8] as const, resolution: 384 }
 
 /**
  * Bakes the seabed around the island into a texture the ocean shader reads:
  * R = sqrt(depth / 40 m), G = coral / weed cover, B = weed vs coral,
- * A = sand brightness. Depth follows the beach / reef terrain near the shore
- * and the slab tail, then drops off to open water.
+ * A = sand brightness. Depth follows the beach / reef terrain near the shore,
+ * the slab tail, and individual reef rocks, then drops off to open water.
  */
 function createSeabedTexture() {
   const { size: S, resolution: n, centre } = REEF
   const beach = islandHasBeach()
+  const footprints = beach
+    ? getSlabFootprints().map((f) => ({
+        x: f.x,
+        z: f.z,
+        rx: Math.max(0.4, f.rx * 0.92),
+        rz: Math.max(0.4, f.rz * 0.92),
+        minR: Math.min(f.rx, f.rz),
+        cos: Math.cos(-f.yaw),
+        sin: Math.sin(-f.yaw),
+        pad: Math.max(f.rx, f.rz) + 3.2,
+      }))
+    : []
   const data = new Uint8Array(n * n * 4)
   for (let py = 0; py < n; py++) {
     for (let px = 0; px < n; px++) {
@@ -139,7 +170,24 @@ function createSeabedTexture() {
       // With the beach dressing the bed follows its terrain; around a bare model
       // it shelves gently from the waterline to the reef flat.
       const shelf = beach ? Math.max(0, -terrainHeight(x, z)) : sd <= 0 ? 0 : Math.min(3.2, 0.12 + sd * 0.32 + reefNoise(x * 0.3, z * 0.3) * 0.25)
-      const depth = Math.min(40, shelf * 0.82 + 34 * Math.pow(1 - reef, 2.05))
+      let depth = Math.min(40, shelf * 0.82 + 34 * Math.pow(1 - reef, 2.05))
+      if (footprints.length > 0 && depth < 12) {
+        let rockDist = Infinity
+        for (let f = 0; f < footprints.length; f++) {
+          const fp = footprints[f]
+          if (Math.abs(x - fp.x) > fp.pad || Math.abs(z - fp.z) > fp.pad) continue
+          const dx = x - fp.x
+          const dz = z - fp.z
+          const lx = dx * fp.cos + dz * fp.sin
+          const lz = -dx * fp.sin + dz * fp.cos
+          const ell = (Math.hypot(lx / fp.rx, lz / fp.rz) - 1) * fp.minR
+          if (ell < rockDist) rockDist = ell
+        }
+        if (rockDist < 2.6) {
+          const rockShelf = rockDist <= 0 ? 0 : Math.pow(rockDist / 2.6, 1.35) * depth
+          depth = Math.min(depth, rockShelf + Math.max(0, rockDist) * 0.28)
+        }
+      }
       const m = reefNoise(x * 0.22 + 11, z * 0.22)
       const patch = smoothstep(0.08, 0.44, m) * smoothstep(0.12, 0.58, reef) * (1 - smoothstep(0.84, 1, reef))
       const i = (py * n + px) * 4
