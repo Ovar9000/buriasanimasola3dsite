@@ -64,13 +64,14 @@
 
 @layer components {
   .glass {
-    background: color-mix(in oklab, var(--color-deep-950) 70%, transparent);
-    border: 1px solid rgb(255 255 255 / 0.12);
+    background: color-mix(in oklab, var(--color-deep-950) 68%, transparent);
+    border: 1px solid rgb(255 255 255 / 0.14);
     box-shadow:
-      0 24px 60px -24px rgb(0 0 0 / 0.6),
-      inset 0 1px 0 rgb(255 255 255 / 0.06);
-    backdrop-filter: blur(12px) saturate(1.2);
-    -webkit-backdrop-filter: blur(12px) saturate(1.2);
+      0 24px 60px -24px rgb(0 0 0 / 0.62),
+      inset 0 1px 0 rgb(255 255 255 / 0.15),
+      inset 0 -1px 0 rgb(255 255 255 / 0.04);
+    backdrop-filter: blur(16px) saturate(1.25);
+    -webkit-backdrop-filter: blur(16px) saturate(1.25);
     contain: paint;
   }
 
