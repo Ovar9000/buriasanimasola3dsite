@@ -10,6 +10,7 @@ import { Effects } from './Effects'
 import { Hotspots, useSnapAnchors } from './Hotspots'
 import { Island } from './Island'
 import { Ocean } from './Ocean'
+import { Vegetation } from './Vegetation'
 
 const DPR: Record<QualityTier, [number, number]> = {
   low: [0.75, 1],
@@ -67,6 +68,7 @@ export function Experience() {
       <Ocean />
       <Suspense fallback={null}>
         <Island onReady={setIsland} />
+        <Vegetation island={island} />
         <SceneReady />
       </Suspense>
       <Hotspots />
